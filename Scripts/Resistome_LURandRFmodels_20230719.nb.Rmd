@@ -4,7 +4,6 @@ output: html_notebook
 ---
 # Packages and data
 ```{r}
-test
 library(openxlsx)
 library(purr)
 library(gtools)
