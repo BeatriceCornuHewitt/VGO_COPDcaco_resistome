@@ -2,7 +2,6 @@
 ```{r}
 .libPaths() # location of where packages are downloaded/saved on my pc
 # Load required associated libraries
-install.packages('Rtools')
 library(Rtools) # For organising data in structure suitable for analysis
 library(tidyverse) # For organising data in structure suitable for analysis
 library(BiocManager) 
@@ -56,6 +55,9 @@ library(DiagrammeR)
 library(rgexf) # to build graph.ml files for upload into gephi etc.
 library(here)
 library(car)
-library(olsrr) # for cook's distance plots to look at influential data points in linear regression models
+library(olsrr) # for CD plots to look at influential data points in linear regression models
 library(doBy)
+library(purr)
+library(textshape)
+library(broom)
 ```
