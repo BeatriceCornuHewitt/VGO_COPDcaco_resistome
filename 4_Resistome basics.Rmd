@@ -225,3 +225,105 @@ FPKM_comparison <- ggplot(plot_data_FPKM, aes(x = Group, y = Total_FPKM, fill = 
 # Save the ggplot to the output_files folder
 ggsave(filename = "Output_files/FPKM_comparison.png", plot = FPKM_comparison, width = 8, height = 6, dpi = 300)
 ```
+
+## Top 10 most abundant ARG clusters
+```{r}
+# Function from AB to calculate top 10 taxa at different levels of taxonomic identification e.g. at ARG level, ARG cluster level, AMR class level etc. 
+toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
+  if( ! is.na(samples[1]) ) {
+    pstemp = prune_samples( samples, ps)
+  } else {
+    pstemp = ps
+  }
+  pstemp = tax_glom2( pstemp, taxrank = rank, NArm=NArm )
+  pstemp = transform_sample_counts( pstemp, function(x) 100*x/sum(x) )
+
+  if( ntaxa(pstemp) < top ) {
+    top = ntaxa(pstemp)
+    warning("Number of taxa in object is less then requested top list! Reduced to ", top)
+  }
+
+  toplist = names( sort( taxa_sums(pstemp), decreasing = TRUE ) )[1:top]
+  return( toplist )
+}
+
+top10.ARGclusters.overall<- toptaxa (ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall
+
+top10.ARGclusters.overall.noblanks<- toptaxa (ARGcluster.aggl.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall.noblanks
+
+# Top 10 in copd samples 
+top10.ARGclusters.COPD<- toptaxa (COPD_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.COPD
+
+# Top 10 in control samples 
+top10.ARGclusters.control<- toptaxa (control_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.control
+
+
+# Present as actual ARG cluster names 
+tt <- data.frame( tax_table( ARGcluster.aggl ) )
+# extract the names of the ARGCluster column where the row names of tt match the taxa present in the top10.ARGclusters.noblanks, top10.ARGclusters.COPD and top10.ARGclusters.control
+
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.noblanks] 
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.COPD]
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.control]
+
+
+# Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
+Final.ps.top10ARGClusters <- prune_taxa(names(top10.ARGclusters.noblanks), AMRcluster90.aggl)
+
+#BARPLOT
+# Make a barplot like the AMR class level one done above, so that for COPD case and control groups, I present the relative abundance of each of the top 10 ARG classes
+bar.graphs2 <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
+  if (level == "Species") {
+    print("Error this level is too fine for amplicon sequencing")
+  } else if (var1 == "ungrouped") {
+    physeqxu <- tax_glom(physeq, level)
+    physeqxu <- transform_sample_counts(physeqxu, function(x) 100 * x/sum(x))
+    physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
+    barchartxu <- plot_bar(physeqxu, fill = level) +
+      labs(x = "COPD or control samples",
+           y = "% of top 10 ARG clusters present",
+           title = paste("Top", displayx, level, "ungrouped")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(barchartxu)
+  } else {
+    physeqm <- merge_samples(physeq, var1)
+    sample_data(physeqm)[[var1]] <- levels(sample_data(physeqm)[[var1]])
+    physeqg <- tax_glom(physeqm, level)
+    physeqg <- transform_sample_counts(physeqg, function(x) 100 * x/sum(x))
+    physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
+    grouped_bar <- plot_bar(physeqg, fill = level) +
+      labs(x = "COPD or control samples",
+           y = "% of top 10 ARG clusters present",
+           title = paste("Top", displayx, level, sep = " ")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(grouped_bar)
+  }
+}
+
+# Subset the phyloseq object to include only COPD and control samples
+ARGcluster.aggl_subset <- subset_samples(AMRcluster90.aggl, copdcaco %in% c("1", "0"))
+
+# Create a new phyloseq object with only the top 10 ARG clusters
+ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(ARGcluster.aggl_subset), decreasing = TRUE))[1:10], ARGcluster.aggl_subset)
+
+# Generate the stacked barplot at the top 10 ARG cluster level
+ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
+  ggtitle("Relative Abundance of Top 10 ARG Clusters in COPD and Control Groups") +
+  labs(fill = "ARG Cluster") +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),  # Align labels to the center of tick points
+        title = element_text(size = 17),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right") +
+  scale_x_discrete(labels = c("COPD" = "COPD", "control" = "Control"))
+
+ARGcluster.barchart
+
+ggsave("ARGcluster.barchart.png",width = 7, height = 5,dpi = 300)
+```
