@@ -1,0 +1,2225 @@
+## Livestock related exposures and the resistome
+### Alpha diversity 
+```{r}
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+Final.ps.noblanks <- Final.ps
+Final.ps.noblanks <-  prune_samples(!sample_names(Final.ps.noblanks)%in%blancs, Final.ps.noblanks)
+Final.ps.noblanks;Final.ps # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
+
+# PS object which I need to add metadata to
+Final.ps.noblanks
+# Current meta data in this ps object
+Final.ps.noblanks@sam_data
+
+# Read in the exposure data from MdR
+livestock.exp.df <- read.csv("VGOcopdcaco_resistome_Livestpred_forBea.csv", header=TRUE, row.names='respnr')
+# Remove the randomly added column 'X' from the dataframe 
+livestock.exp.df <- subset (livestock.exp.df, select = -X)
+# Remove blanks from the dataframe 
+livestock.exp.df.noblanks <- livestock.exp.df[-(70:72),]
+livestock.exp.df.noblanks.df <- as.data.frame(livestock.exp.df.noblanks)
+
+# copy over original ps object 
+Final.ps.noblanks.exp <- Final.ps.noblanks
+sample_data(Final.ps.noblanks.exp)
+
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(Final.ps.noblanks.exp) <- sam.data.new
+Final.ps.noblanks.exp@sam_data
+
+# Alpha diversity - MULTIPLY BY BILLION METHOD
+# The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. Observing the data I see that there are a maximum of 7 decimals in the dataset.
+# Alpha diversity calculations require whole numbers...
+# I will multiply by 1,000,000,000 in order to remove all these decimals to do the alpha diversity calculations. 
+  
+Final.ps.noblanks.exp.multiplybillion <- Final.ps.noblanks.exp
+Final.ps.noblanks.exp.multiplybillion@otu_table@.Data <- (Final.ps.noblanks.exp.multiplybillion@otu_table@.Data)*1000000000
+head(Final.ps.noblanks.exp.multiplybillion@otu_table@.Data)
+
+# Add in the copdcaco data to this new ps object 
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco<-Final.ps.noblanks@sam_data$copdcaco
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco
+# Firstly I will rename the codes "1" & "0" as COPD & control respectively so that the graphs are easier to interpret - directly manipulate the new PS matrix
+str(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco)
+as.factor(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco)
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco<- recode(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco,"1"="COPD", "0"="control")
+
+# Plot all alpha diversity measures
+# Alpha diversity is a measure of microbiome diversity applicable to a single sample (number of species in each sample) i.e. the higher the alpha diversity score of a sample the more species are present in it
+# There are many alpha diversity indices which each reflect different aspects of community heterogeneity - I have chosen: observed, Chao1, shannon, simpson, and evenness
+plot_richness(Final.ps.noblanks.exp.multiplybillion, measures=c("Richness", "Shannon", "Chao1", "Observed", "Simpson"))
+Alphadiversity_scatter<- plot_richness(Final.ps.noblanks.exp.multiplybillion, x="copdcaco", measures=c("Shannon", "Chao1", "Observed", "Simpson", "Evenness"))
+Alphadiversity_scatter
+
+# Add colour to the scatterplot
+mycols1 <- c("COPD"="red", "control"="blue")
+Alphadiversity_scatter.colour.noblanks <- plot_richness(Final.ps.noblanks.exp.multiplybillion, x="copdcaco", measures=c("Observed", "Chao1", "Shannon", "Simpson"), color="copdcaco")
+Alphadiversity_scatter.colour + scale_color_manual(values = mycols1, aesthetics = c("color", "fill"))
+
+# Create tables with alpha diversity measures
+library(microbiome)
+Shannon.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+Observed.table.exp <-  microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Observed"), zeroes = TRUE)
+Chao1.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Chao1"), zeroes = TRUE)
+SimpsonEvenness.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "simpson"), zeroes = TRUE)
+
+Shannon.table.exp
+Observed.table.exp
+Chao1.table.exp
+SimpsonEvenness.table.exp
+
+#Now add the diversity tables to the metadata
+sample_data(Final.ps.noblanks.exp.multiplybillion)
+sample_data(Final.ps.noblanks.exp.multiplybillion)$shannon <- Shannon.table.exp$diversity_shannon
+sample_data(Final.ps.noblanks.exp.multiplybillion)$Chao1 <- Chao1.table.exp$chao1
+sample_data(Final.ps.noblanks.exp.multiplybillion)$Observed <- Observed.table.exp$observed
+sample_data(Final.ps.noblanks.exp.multiplybillion)$SimpsonEvenness <- SimpsonEvenness.table.exp$evenness_simpson
+#check whether this has been added to the metadata table
+head(sample_data(Final.ps.noblanks.exp.multiplybillion))
+# Yes these columns have been added to the metadata of the phyloseq object now
+
+# Now I want to relate alpha diversity with the exposure variables e.g. MinDistAnyFarm.NEG, all farms within radius, number of animals in radius, endotoxin (dispersion modelled), PM10 (dispersion modelled)
+# As all predictor variables are continuous and outcome is continuous too, I can use a linear regression model
+
+# POST meeting on 13th aug 2021
+# Will run all linear regressions with all exposure proxies, set a p-value threshold and decide from there which are the important parameters to look at further
+exp.proxy.alpha.df <-  as.data.frame(Final.ps.noblanks.exp.multiplybillion@sam_data)
+colnames(exp.proxy.alpha.df)
+# rename copdcaco as 0 and 1 
+exp.proxy.alpha.df$copdcaco <- factor(exp.proxy.alpha.df$copdcaco)
+exp.proxy.alpha.df$copdcaco <- recode_factor(exp.proxy.alpha.df$copdcaco, "COPD" = "1", "control" = "0")
+
+# Run the linear models
+# Start with Shannon diversity
+# I should include COPD/control status as an additional variable in the linear regression models. Potential loss of power by doing this, but doesn’t take many degrees of freedom so should include in these models.  
+# UNIVARIABLE alpha diversity models:
+# Univariable linear models were used for each alpha diversity index for: 
+# The general livestock predictor (I selected the variable “N distance weighted farms within 3000m” as I felt this was most accurate representation of the general livestock-related characteristics (compared to say “min distance to farm” etc.)
+# Dispersion modelled endotoxin and PM10
+# My LUR-modelled microbial concentrations
+# Univariable models used here as no likely confounders with these predictors. 
+
+# General livestock related predictor - I choose nAnyFarmWghtDist.3000m.sum as the predictor for general livestock exposure as this seems like the most suitable exposure proxy for general livestock exposure
+lm_shannon_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+lm_Observed_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+
+summary(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+summary(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+summary(lm_Observed_nAnyFarmWghtDist.3000m.sum)
+
+# Dispersion-modelled endotoxin and PM10 concentrations
+lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+
+summary(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+summary(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+summary(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)
+
+# SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
+# I previously ran these linear models - see other R notebook "LUR_modelling.Rmd"
+lm_shannon_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+lm_simpeveness_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+lm_observed_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim+ SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+summary(lm_shannon_SLR_E.coli)
+summary(lm_shannon_SLR_Staph)
+summary(lm_shannon_SLR_tetW)
+summary(lm_shannon_SLR_mecA)
+
+summary(lm_simpeveness_SLR_E.coli)
+summary(lm_simpeveness_SLR_Staph)
+summary(lm_simpeveness_SLR_tetW)
+summary(lm_simpeveness_SLR_mecA)
+
+summary(lm_observed_SLR_E.coli)
+summary(lm_observed_SLR_Staph)
+summary(lm_observed_SLR_tetW)
+summary(lm_observed_SLR_mecA)
+
+
+# MULTIVARIABLE alpha diversity models
+# I am only using a multivariable model for the distance weighted animals (to correct for different livestock species)
+# 1000m buffer animals 
+lm_shannon_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$shannon ~
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+                             
+lm_simpson_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$SimpsonEvenness ~ 
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+
+lm_observed_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$Observed ~ 
+                                exp.proxy.alpha.df$copdcaco +
+                                  exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+
+# 3000m buffer animals 
+lm_shannon_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$shannon ~
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+
+lm_simpson_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$SimpsonEvenness ~ 
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+
+lm_observed_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$Observed ~ 
+                               exp.proxy.alpha.df$copdcaco+ 
+                                 exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+                             
+
+# Summary of these multiple linear regression models 
+# 1000m buffer
+summary(lm_shannon_multivariable_animals_1000m)
+summary(lm_simpson_multivariable_animals_1000m)
+summary(lm_observed_multivariable_animals_1000m)
+# 3000m buffer
+summary(lm_shannon_multivariable_animals_3000m)
+summary(lm_simpson_multivariable_animals_3000m)
+summary(lm_observed_multivariable_animals_3000m)
+
+# Create a data table using table1 package to summarise the linear regression results 
+# Factor the basic variables that we're interested in
+library(sjPlot)
+# Data table for simple linear regression models
+# General livestock exposure
+tab_model(lm_shannon_nAnyFarmWghtDist.3000m.sum, lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum, lm_Observed_nAnyFarmWghtDist.3000m.sum, auto.label = FALSE, pred.labels = c("(Intercept)", "N of distance weighted farms within 3000m (any type)", "COPD case vs. control"))
+
+# Data table for simple linear regression models
+# Dispersion modelled endotoxin and PM10
+summary(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+tab_model(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5, lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5, lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5, auto.label = FALSE, pred.labels = c("(Intercept)", "Dispersion modelled endotoxin concentration", "COPD case vs. control"))
+tab_model(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5,lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5, lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5, auto.label = FALSE, pred.labels = c("(Intercept)", "Dispersion modelled PM10 concentration", "COPD case vs. control"))
+
+# Data table for multiple linear regression models
+tab_model(lm_shannon_multivariable_animals_1000m)
+table_lm_shannon_multivariable_animals_1000m <- tab_model(lm_shannon_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_simpson_multivariable_animals_1000m <- tab_model(lm_simpson_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_observed_multivariable_animals_1000m <- tab_model(lm_observed_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_shannon_multivariable_animals_3000m <- tab_model(lm_shannon_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+table_lm_simpson_multivariable_animals_3000m <- tab_model(lm_simpson_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+table_lm_observed_multivariable_animals_3000m <- tab_model(lm_observed_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+
+
+# Checking assumptions of multiple linear regression models
+# The four key assumptions are: Linearity of the relationship between y and its explanatory variables, Independence of variables where explanatory variables are not highly correlated with each other, Normal distribution of residuals, Homoscedasticity or equal variance of residuals
+library(ggplot2)
+library(corrplot)
+library(car)
+library(magrittr)
+
+# R has a set of built in regression diagnostic plots (4 in total) set of diagnostics plots
+# Checking assumptions of simple linear regression models
+{par(mfrow= c(2,2))
+plot(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+plot(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+plot(lm_Observed_nAnyFarmWghtDist.3000m.sum)}
+
+{par(mfrow= c(2,2))
+plot(lm_shannon_SLR_E.coli)
+plot(lm_shannon_SLR_Staph)
+plot(lm_shannon_SLR_tetW)
+plot(lm_shannon_SLR_mecA)
+plot(lm_simpeveness_SLR_E.coli)
+plot(lm_simpeveness_SLR_Staph)
+plot(lm_simpeveness_SLR_tetW)
+plot(lm_simpeveness_SLR_mecA)
+plot(lm_observed_SLR_E.coli)
+plot(lm_observed_SLR_Staph)
+plot(lm_observed_SLR_tetW)
+plot(lm_observed_SLR_mecA)}
+
+{par(mfrow= c(2,2))
+plot(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)}
+
+# Checking assumptions of multiple linear regression models
+{par(mfrow= c(2,2))
+plot(lm_shannon_multivariable_animals_1000m) 
+plot(lm_simpson_multivariable_animals_1000m)
+plot(lm_observed_multivariable_animals_1000m) 
+plot(lm_shannon_multivariable_animals_3000m)
+plot(lm_simpson_multivariable_animals_3000m)
+plot(lm_observed_multivariable_animals_3000m)}
+
+# First plot shows whether there are non-linear relationships between X and Y - if the red lines lies on the straight dotted line then assumptions are met of linearity. A horizontal line with no patterns indicates a linear relationship.Residuals should be evenly spread around the line - in my case we can see 2 distinct lines of data in most plots due to the dichotomous (COPD case/control) variable that is in the model.
+# Q-Q plot shows whether our residuals are normally distributed - they should lie on the diagonal line - doesn't have to be perfect - if it curves off a lot in the centre this is a warning sign - normally they tail away a bit 
+# Scale-location plot tells us if the residuals are evenly spread across the predictors. This is the assessment of homoscedasticity - you want to see a pretty much horizontal line. 
+# Residuals vs leverage plot allows us to identify any potential influential points - we are interested in points in either the top right or bottom right corners - problematic cases will fall within dotted lines that are automatically on the plot making it easy to spot
+
+# Histograms to look graphically at the distribution of the residuals
+{par(mfrow= c(2,2))
+plot(lm_shannon_SLR_E.coli)
+plot(lm_shannon_SLR_Staph)
+plot(lm_shannon_SLR_tetW)
+plot(lm_shannon_SLR_mecA)
+plot(lm_simpeveness_SLR_E.coli)
+plot(lm_simpeveness_SLR_Staph)
+plot(lm_simpeveness_SLR_tetW)
+plot(lm_simpeveness_SLR_mecA)
+plot(lm_observed_SLR_E.coli)
+plot(lm_observed_SLR_Staph)
+plot(lm_observed_SLR_tetW)
+plot(lm_observed_SLR_mecA)}
+plot(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)}
+plot(lm_shannon_multivariable_animals_1000m) 
+plot(lm_simpson_multivariable_animals_1000m)
+plot(lm_observed_multivariable_animals_1000m) 
+plot(lm_shannon_multivariable_animals_3000m)
+plot(lm_simpson_multivariable_animals_3000m)
+plot(lm_observed_multivariable_animals_3000m)}
+
+hist(lm_shannon_nAnyFarmWghtDist.3000m.sum$residuals)
+hist(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum$residuals) 
+hist(lm_Observed_nAnyFarmWghtDist.3000m.sum$residuals)
+hist(lm_shannon_SLR_E.coli$residuals)
+hist(lm_shannon_SLR_Staph$residuals) 
+hist(lm_shannon_SLR_tetW$residuals)
+hist(lm_shannon_SLR_mecA$residuals)
+hist(lm_simpeveness_SLR_E.coli$residuals)
+hist(lm_simpeveness_SLR_Staph$residuals)
+hist(lm_simpeveness_SLR_tetW$residuals)
+hist(lm_simpeveness_SLR_mecA$residuals)
+hist(lm_observed_SLR_E.coli$residuals)
+hist(lm_observed_SLR_Staph$residuals)
+hist(lm_observed_SLR_tetW$residuals)
+hist(lm_observed_SLR_mecA$residuals)
+hist(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_shannon_multivariable_animals_1000m$residuals) 
+hist(lm_simpson_multivariable_animals_1000m$residuals)
+hist(lm_observed_multivariable_animals_1000m$residuals) 
+hist(lm_shannon_multivariable_animals_3000m$residuals)
+hist(lm_simpson_multivariable_animals_3000m$residuals)
+hist(lm_observed_multivariable_animals_3000m$residuals)
+
+# Durbin watson test is used to detect the presence of autocorrelation in the residuals
+library(car)
+durbinWatsonTest(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_Observed_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_shannon_SLR_E.coli)
+durbinWatsonTest(lm_shannon_SLR_Staph)
+durbinWatsonTest(lm_shannon_SLR_tetW)
+durbinWatsonTest(lm_shannon_SLR_mecA)
+durbinWatsonTest(lm_simpeveness_SLR_E.coli)
+durbinWatsonTest(lm_simpeveness_SLR_Staph)
+durbinWatsonTest(lm_simpeveness_SLR_tetW)
+durbinWatsonTest(lm_simpeveness_SLR_mecA)
+durbinWatsonTest(lm_observed_SLR_E.coli)
+durbinWatsonTest(lm_observed_SLR_Staph)
+durbinWatsonTest(lm_observed_SLR_tetW)
+durbinWatsonTest(lm_observed_SLR_mecA)
+durbinWatsonTest(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_shannon_multivariable_animals_1000m)
+durbinWatsonTest(lm_simpson_multivariable_animals_1000m)
+durbinWatsonTest(lm_observed_multivariable_animals_1000m)
+durbinWatsonTest(lm_shannon_multivariable_animals_3000m)
+durbinWatsonTest(lm_simpson_multivariable_animals_3000m)
+durbinWatsonTest(lm_observed_multivariable_animals_3000m)
+
+# None come out as significant - no significant autocorrelation detected
+# Cook's distance 
+library(olsrr)
+{par(mfrow=c(5,5))
+ols_plot_cooksd_bar(lm_shannon_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpson_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_multivariable_animals_3000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpson_multivariable_animals_3000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_multivariable_animals_3000m, print_plot = TRUE)}
+
+cooks.distance(lm_shannon_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_Observed_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_shannon_SLR_E.coli)>1
+cooks.distance(lm_shannon_SLR_Staph)>1
+cooks.distance(lm_shannon_SLR_tetW)>1
+cooks.distance(lm_shannon_SLR_mecA)>1
+cooks.distance(lm_simpeveness_SLR_E.coli)>1
+cooks.distance(lm_simpeveness_SLR_Staph)>1
+cooks.distance(lm_simpeveness_SLR_tetW)>1
+cooks.distance(lm_simpeveness_SLR_mecA)>1
+cooks.distance(lm_observed_SLR_E.coli)>1
+cooks.distance(lm_observed_SLR_Staph)>1
+cooks.distance(lm_observed_SLR_tetW)>1
+cooks.distance(lm_observed_SLR_mecA)>1
+cooks.distance(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_shannon_multivariable_animals_1000m)>1
+cooks.distance(lm_simpson_multivariable_animals_1000m)>1
+cooks.distance(lm_observed_multivariable_animals_1000m)>1
+cooks.distance(lm_shannon_multivariable_animals_3000m)>1
+cooks.distance(lm_simpson_multivariable_animals_3000m)>1
+cooks.distance(lm_observed_multivariable_animals_3000m)>1
+
+# In each regression model there are several points with a cook's D > 4/n threshold (in our case n=69, therefore threshold = 0.058). 
+# Not many points have Cook's Distance > 1 though
+
+```
+### Ordinations
+** Tells us how different the resistome composition in one environment is compared to another. I.e. I will look at the whether the resistome composition in COPD pts differs to that in controls.**
+```{r}
+# I will construct ordinations based on exposure proxies
+# I start with the dispersion modelled PM10 and endotoxin
+# Then will use the 4 exposure proxies that came out as significant for the alpha diversity metrics: nhorsesWghtDist.1000m.sum, nsheepWghtDist.1000m.sum, nhorsesWghtDist.3000m.sum, ngoatsWghtDist.3000m.sum
+
+# PCoA 
+# I will construct principal coordinates analysis based on Bray-Curtis dissimilarities. These measures are based on abundance or read count data. It generates differences in ARG abundances between two samples (e.g., at species level) which are from 0 to 1 (where 0= both samples share the same species at exactly the same abundances and 1= both samples have complete different species abundances).
+ARGcluster.aggl.noblanks.exp <- ARGcluster.aggl.noblanks
+sample_data(ARGcluster.aggl.noblanks.exp)
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.noblanks.exp) <- sam.data.new
+names(ARGcluster.aggl.noblanks.exp@sam_data)
+
+# Firstly I need to categorise my exposure proxy variables which are currently continuous numeric to quantiles (factor variables) (as WvK did for his analysis too)- I want an equal % of variables in each quantile
+# I start with the livestock proxies which came out significant in the alpha diversity linear models 
+ARGcluster.aggl.noblanks.exp.quant <- ARGcluster.aggl.noblanks.exp
+# I will use the quantcut() function in gtools -quantcut(x, q = 4, na.rm = TRUE, ...)
+
+ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG, q=4, labels =c("1st quantile (minDistAnyFarm.NEG)", "2nd quantile (minDistAnyFarm.NEG)", "3rd quantile (minDistAnyFarm.NEG)", "4th quantile (minDistAnyFarm.NEG)"))
+# MinDistAnyFarm.INV
+ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV, q=4, labels =c("1st quantile (MinDistAnyFarm.INV)", "2nd quantile (MinDistAnyFarm.INV)", "3rd quantile (MinDistAnyFarm.INV)", "4th quantile (MinDistAnyFarm.INV)"))
+# AllFarm.3000m
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m, q=4, labels =c("1st quantile (AllFarm.3000m)", "2nd quantile (AllFarm.3000m)", "3rd quantile (AllFarm.3000m)", "4th quantile (AllFarm.3000m)"))
+#AllFarm.1000m
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m, q=4, labels =c("1st quantile (AllFarm.1000m)", "2nd quantile (AllFarm.1000m)", "3rd quantile (AllFarm.1000m)", "4th quantile (AllFarm.1000m)"))
+#AllFarm.500m - unable to split into quantiles due to lots of zeros - I have split in half instead
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m, q=2,labels =c("Bottom half (AllFarm.500m)", "Top half (AllFarm.500m)"))
+# #AllFarm.250m  -  difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe? Is this that explanatory though?
+# ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.250m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.250m, q=2)
+#npigsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.1000m.sum, q=2, labels=c("Bottom half (npigsWghtDist.1000m.sum)", "Top half (npigsWghtDist.1000m.sum)"))
+#npoultryWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.1000m.sum, q=2, labels=c("Bottom half (npoultryWghtDist.1000m.sum)", "Top half (npoultryWghtDist.1000m.sum)"))
+#ncowsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.1000m.sum<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.1000m.sum, q=4, labels =c("1st quantile (ncowsWghtDist.1000m.sum)", "2nd quantile (ncowsWghtDist.1000m.sum)", "3rd quantile (ncowsWghtDist.1000m.sum)", "4th quantile (ncowsWghtDist.1000m.sum)"))
+#ngoatsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum, q=2, labels=c("Bottom half (ngoatsWghtDist.1000m.sum)", "Top half (ngoatsWghtDist.1000m.sum)")) # unable to split ngoatsWghtDist.1000m.sum into half
+#nhorsesWghtDist.1000m.sum 
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.1000m.sum, q=4, labels =c("1st quantile (nhorsesWghtDist.1000m.sum)", "2nd quantile (nhorsesWghtDist.1000m.sum)", "3rd quantile (nhorsesWghtDist.1000m.sum)", "4th quantile (nhorsesWghtDist.1000m.sum)"))
+# ngoatsWghtDist.1000m.sum
+# Difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe?
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum == 0, "No goat farms in 1000m","1 or more goat farms within 1000m")
+# Split nsheepWghtDist.1000m.sum into quantiles
+# It is not possible to split this variable into quantiles (because more than one quantile obtains the same value - as there are so many zero values), therefore instead I can split into 2 - bottom and top halves
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum, q=2, labels =c("bottom half", "top half"))
+# npigsWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.3000m.sum, q=2, labels =c("Bottom half (npigsWghtDist.3000m.sum)", "Top half (npigsWghtDist.3000m.sum)"))
+#npoultryWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.3000m.sum, q=4, labels =c("1st quantile (npoultryWghtDist.3000m.sum)", "2nd quantile (npoultryWghtDist.3000m.sum)", "3rd quantile (npoultryWghtDist.3000m.sum)", "4th quantile (npoultryWghtDist.3000m.sum)"))
+#ncowsWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.3000m.sum, q=4, labels =c("1st quantile (ncowsWghtDist.3000m.sum)", "2nd quantile (ncowsWghtDist.3000m.sum)", "3rd quantile (ncowsWghtDist.3000m.sum)", "4th quantile (ncowsWghtDist.3000m.sum)"))
+# Split nhorsesWghtDist.3000m.sum into quantiles
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.3000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st quantile (nhorsesWghtDist.3000m.sum)", "2nd quantile (nhorsesWghtDist.3000m.sum)", "3rd quantile (nhorsesWghtDist.3000m.sum)", "4th quantile(nhorsesWghtDist.3000m.sum)"))
+# Split ngoatsWghtDist.3000m.sum into quantiles
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum, q=4, labels =c("1st quantile (ngoatsWghtDist.3000m.sum)", "2nd quantile (ngoatsWghtDist.3000m.sum)", "3rd quantile (ngoatsWghtDist.3000m.sum)", "4th quantile(ngoatsWghtDist.3000m.sum)"))
+#nsheepWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.3000m.sum, q=4, labels =c("1st quantile (nsheepWghtDist.3000m.sum)", "2nd quantile (nsheepWghtDist.3000m.sum)", "3rd quantile (nsheepWghtDist.3000m.sum)", "4th quantile (nsheepWghtDist.3000m.sum)"))
+#nAnyFarmWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.1000m.sum, q=4, labels =c("1st quantile (nAnyFarmWghtDist.1000m.sum)", "2nd quantile (nAnyFarmWghtDist.1000m.sum)", "3rd quantile (nAnyFarmWghtDist.1000m.sum)", "4th quantile (nAnyFarmWghtDist.1000m.sum)"))
+#nAnyFarmWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st quantile (nAnyFarmWghtDist.3000m.sum)", "2nd quantile (nAnyFarmWghtDist.3000m.sum)", "3rd quantile (nAnyFarmWghtDist.3000m.sum)", "4th  quantile (nAnyFarmWghtDist.3000m.sum) "))
+# DISP_EUinPM10_AnnualAv_WP99.5  
+ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=4, labels =c("1st quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "2nd quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "3rd quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "4th quantile (DISP_EUinPM10_AnnualAv_WP99.5)"))
+# DISP_PM10CONC_AnnualAv_WP99.5 
+ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, q=4, labels =c("1st quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "2nd quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "3rd quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "4th quantile (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+
+# Check a few variabes to ensure quantile/half splitting has been successful
+
+# check the quantile splitting of these other exposure proxies has been successful
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum) # should be in half
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum)# should be in half
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5)
+# Yes it appears that splitting of the exposure proxy variables has all been performed correctly 
+
+# PCoA on the BC dissimilarity matrix of the clustered resistome data (as before)
+ARGcluster.aggl.PCoA.exp.quant <- ordinate(ARGcluster.aggl.noblanks.exp.quant, method="PCoA", distance="bray")
+
+# Extract the vectors from the PCoA 
+ARGcluster.aggl.PCoA.exp.quant$vectors # i.e. this tells us how much of the total variance is explained by each of the axes with respect to the total variance
+
+# Show dominant eigen planes
+plot_scree(ARGcluster.aggl.PCoA.exp.quant)
+
+# Exploring all exposure variables in PCoAs 
+# MinDistAnyFarm.NEG
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.NEG.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="MinDistAnyFarm.NEG", shape="MinDistAnyFarm.NEG" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by MinDistAnyFarm.NEG quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.NEG.quant
+
+# MinDistAnyFarm.INV
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.INV.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="MinDistAnyFarm.INV", shape="MinDistAnyFarm.INV" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by MinDistAnyFarm.INV quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.INV.quant
+
+# AllFarm.3000m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.3000m <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.3000m", shape="AllFarm.3000m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.3000m quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.3000m
+
+# AllFarm.1000m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.1000m.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.1000m", shape="AllFarm.1000m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.1000m quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.1000m.quant
+
+#AllFarm.500m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.500m <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.500m", shape="AllFarm.500m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.500m halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.500m
+
+#npigsWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.1000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npigsWghtDist.1000m.sum", shape="npigsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npigsWghtDist.1000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.1000m.sum.half
+
+# npoultryWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.1000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npoultryWghtDist.1000m.sum", shape="npoultryWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npoultryWghtDist.1000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.1000m.sum.half
+
+#ncowsWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.1000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ncowsWghtDist.1000m.sum", shape="ncowsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by ncowsWghtDist.1000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.1000m.sum
+
+#nhorsesWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nhorsesWghtDist.1000m.sum", shape="nhorsesWghtDist.1000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nhorsesWghtDist.1000m.sum quantiles") +
+  labs(legend="nhorsesWghtDist.1000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nhorsesWghtDist.1000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant + stat_ellipse()
+
+# ngoatsWghtDist.1000m.sum.quant
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.1000m.sum.quant <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ngoatsWghtDist.1000m.sum", shape="ngoatsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by quantiles of ngoatsWghtDist.1000m.sum") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() +
+  theme(plot.title = element_text(size = 20, face = "bold"), legend.title=element_text(size=20), legend.text=element_text(size=15))
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.1000m.sum.quant
+
+# nsheepWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nsheepWghtDist.1000m.sum", shape="nsheepWghtDist.1000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nsheepWghtDist.1000m.sum quantiles") +
+  labs(legend="nsheepWghtDist.1000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nsheepWghtDist.1000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half + stat_ellipse()
+
+
+
+#npigsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.3000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npigsWghtDist.3000m.sum", shape="npigsWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npigsWghtDist.3000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.3000m.sum.half
+
+#npoultryWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.3000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npoultryWghtDist.3000m.sum", shape="npoultryWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npoultryWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.3000m.sum
+
+#ncowsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.3000m.sum.quant<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ncowsWghtDist.3000m.sum", shape="ncowsWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by ncowsWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.3000m.sum.quant
+
+#nhorsesWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nhorsesWghtDist.3000m.sum", shape="nhorsesWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nhorsesWghtDist.3000m.sum quantiles") +
+  labs(legend="nhorsesWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nhorsesWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant + stat_ellipse()
+
+#ngoatsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "ngoatsWghtDist.3000m.sum", shape="ngoatsWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by ngoatsWghtDist.3000m.sum quantiles") +
+  labs(legend="ngoatsWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = ngoatsWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant + stat_ellipse()
+
+#nsheepWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.3000m.sum.quant<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="nsheepWghtDist.3000m.sum", shape="nsheepWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by nsheepWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.3000m.sum.quant
+
+#nAnyFarmWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.1000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="nAnyFarmWghtDist.1000m.sum", shape="nAnyFarmWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by nAnyFarmWghtDist.1000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.1000m.sum
+
+# nAnyFarmWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nAnyFarmWghtDist.3000m.sum", shape="nAnyFarmWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nAnyFarmWghtDist.3000m.sum quantiles") +
+  labs(legend="nAnyFarmWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nAnyFarmWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum + stat_ellipse()
+
+# Ordination on dispersion modelled endotoxin concentration DISP_EUinPM10_AnnualAv_WP99.5 quantiles 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "DISP_EUinPM10_AnnualAv_WP99.5", shape="DISP_EUinPM10_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by endotoxin exposure quantiles") +
+  labs(legend="Endotoxin exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_EUinPM10_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant + stat_ellipse()
+
+# Ordination on dispersion modelled PM10 concentration quantiles (DISP_PM10CONC_AnnualAv_WP99.5)
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "DISP_PM10CONC_AnnualAv_WP99.5", shape="DISP_PM10CONC_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by PM10 exposure quantiles") +
+  labs(legend="PM10 exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_PM10CONC_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant + stat_ellipse()
+
+# For all of the ordinations it appears that there are no associations - i.e. lots of overlap of all ordinations
+
+# Now I will try an alternative splitting of the variables
+# Try splitting endotoxin exposure into high and low concentrations instead 
+# Split DISP_EUinPM10_AnnualAv_WP99.5 into high and low 
+ARGcluster.aggl.noblanks.exp.half <- ARGcluster.aggl.noblanks
+sample_data(ARGcluster.aggl.noblanks.exp.half)
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.noblanks.exp.half) <- sam.data.new
+ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=2, labels =c("Low exposure (DISP_EUinPM10_AnnualAv_WP99.5)", "High exposure (DISP_EUinPM10_AnnualAv_WP99.5)"))
+
+# Run the ordination on this DISP_EUinPM10_AnnualAv_WP99.5 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.half, ARGcluster.aggl.PCoA.exp.half, color = "DISP_EUinPM10_AnnualAv_WP99.5", shape="DISP_EUinPM10_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by endotoxin exposure quantiles") +
+  labs(legend="Endotoxin exposure (high vs.low)")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.half@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_EUinPM10_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half + stat_ellipse()
+
+# Try splitting PM10 exposure into high and low concentrations instead
+ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=2, labels =c("Low exposure (DISP_PM10CONC_AnnualAv_WP99.5)", "High exposure (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.half, ARGcluster.aggl.PCoA.exp.half, color = "DISP_PM10CONC_AnnualAv_WP99.5", shape="DISP_PM10CONC_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by PM10 exposure quantiles") +
+  labs(legend="PM10 exposure (high vs.low)")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.half@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_PM10CONC_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half + stat_ellipse()
+
+# No clear clustering even when dispersion modelled PM10 or endotoxin are just stratified into halves (high and low exposure)...no effect of dispersion modelled PM10 or endotoxin on resistome composition. 
+```
+## Comparing beta diversity - exposure effects 
+```{r}
+# There are two tests that are widely used in beta diversity analyses: betadisper and adonis. 
+# Betadisper tests whether two or more groups are homogeneously dispersed in relation to their species in studied samples (it is a multivariate analogue of Levene's test for homogeneity of variances). This test can be done to see if one group has more compositional variance than another. Moreover, homogeneity of dispersion among groups is very advisable to have if you want to test if two or more groups have different compositions, which is tested by adonis. So firstly I will perform betadisper: then move onto adonis
+# Use betadisper to assess homogeneity of group dispersions - it first calculates the average distance of group members to the group centroid in multivariate space (generated by a distance matrix). Then, an ANOVA is done to test if the dispersions (variances) of groups are different.
+#Extract abundance matrix from phyloseq object
+ARGclusters.for.beta.div.exp <- as(otu_table(ARGcluster.aggl.noblanks.exp), "matrix")
+# transform into a data frame
+ARG.cluster.dataframe.exp <-as.data.frame(ARGclusters.for.beta.div.exp)
+ARG.cluster.dataframe.exp
+
+# add copd status to df 
+ARG.cluster.dataframe.exp$copdcaco <- ARGcluster.aggl.noblanks@sam_data$copdcaco
+
+BC.distance.exp <- vegdist(ARG.cluster.dataframe.exp, method =  "bray")
+# All variables have already been split into quantiles or halves
+
+# Dispersion modelled endotoxin
+# Betadisper
+# Add columns of the exposure proxies to the dataframe
+ARG.cluster.dataframe.exp$MinDistAnyFarm.NEG <- ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG
+ARG.cluster.dataframe.exp$MinDistAnyFarm.INV <- ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV
+ARG.cluster.dataframe.exp$AllFarm.3000m <- ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m
+ARG.cluster.dataframe.exp$AllFarm.1000m <- ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m
+ARG.cluster.dataframe.exp$AllFarm.500m <- ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m
+ARG.cluster.dataframe.exp$AllFarm.250m <- ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.250m
+ARG.cluster.dataframe.exp$npigsWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$npoultryWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$ncowsWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$nhorsesWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$ngoatsWghtDist.1000m.sum<- ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$nsheepWghtDist.1000m.sum<- ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$nfuranimsWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nfuranimsWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$npigsWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$npoultryWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$ncowsWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$nhorsesWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$ngoatsWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$nsheepWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$nfuranimsWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nfuranimsWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$nAnyFarmWghtDist.1000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.1000m.sum
+ARG.cluster.dataframe.exp$nAnyFarmWghtDist.3000m.sum <- ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.3000m.sum
+ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5 <- ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5
+ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5 <- ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_PM10CONC_AnnualAv_WP99.5
+
+head(ARG.cluster.dataframe.exp) # check these have been added - yes!
+
+#DISP_EUinPM10_AnnualAv_WP99.5
+Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5 <- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5)
+Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5
+# Perform an anova using the group dispersions.
+anova(Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5)
+# We  see that the ANOVA's p-value is not significant meaning that group dispersions are homogenous ("Null hypothesis of no difference in dispersion between the quartiles")
+plot(Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5)
+# Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5, permutations = 999)
+# we see that the groups do not have significantly different compositions (p>0.05). 
+# We can conclude that our groups (quartiles of endotoxin exposure (dispersion modelled)) present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions.
+
+## DISP_PM10CONC_AnnualAv_WP99.5
+# Betadisper
+Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5 <- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5)
+Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5
+# Perform an anova using the group dispersions.
+anova(Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5)
+# We  see that the ANOVA's p-value is not significant meaning that group dispersions are homogenous("Null hypothesis of no difference in dispersion between the quartiles")
+plot(Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5)
+# Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5, permutations = 999)
+# we see that the 4 groups do not have significantly different compositions (p>0.05). 
+# We can conclude that our groups (quartiles of PM10 exposure (dispersion modelled)) present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions.
+
+# Running betadisper on all exposure proxies 
+Betadisper.ARGcluster.exp.MinDistAnyFarm.NEG<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$MinDistAnyFarm.NEG)
+Betadisper.ARGcluster.exp.MinDistAnyFarm.INV<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$MinDistAnyFarm.INV)
+Betadisper.ARGcluster.exp.AllFarm.3000m<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$AllFarm.3000m)
+Betadisper.ARGcluster.exp.AllFarm.1000m<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$AllFarm.1000m)
+Betadisper.ARGcluster.exp.AllFarm.500m<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$AllFarm.500m)
+Betadisper.ARGcluster.exp.AllFarm.250m<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$AllFarm.250m)
+Betadisper.ARGcluster.exp.npigsWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$npigsWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.npoultryWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$npoultryWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.ncowsWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$ncowsWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.nhorsesWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nhorsesWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.ngoatsWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$ngoatsWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.nsheepWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nsheepWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.nfuranimsWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nfuranimsWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.npigsWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$npigsWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.npoultryWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$npoultryWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.ncowsWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$ncowsWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.nhorsesWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nhorsesWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.ngoatsWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$ngoatsWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.nsheepWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nsheepWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.nfuranimsWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nfuranimsWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.nAnyFarmWghtDist.1000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nAnyFarmWghtDist.1000m.sum)
+Betadisper.ARGcluster.exp.nAnyFarmWghtDist.3000m.sum<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$nAnyFarmWghtDist.3000m.sum)
+Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5)
+Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5<- betadisper(BC.distance.exp, ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5)
+
+anova(Betadisper.ARGcluster.exp.MinDistAnyFarm.NEG)
+anova(Betadisper.ARGcluster.exp.MinDistAnyFarm.INV)
+anova(Betadisper.ARGcluster.exp.AllFarm.3000m)
+anova(Betadisper.ARGcluster.exp.AllFarm.1000m)
+anova(Betadisper.ARGcluster.exp.AllFarm.500m)
+anova(Betadisper.ARGcluster.exp.AllFarm.250m)
+anova(Betadisper.ARGcluster.exp.npigsWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.npoultryWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.ncowsWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.nhorsesWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.ngoatsWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.nsheepWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.nfuranimsWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.npigsWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.npoultryWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.ncowsWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.nhorsesWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.ngoatsWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.nsheepWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.nfuranimsWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.nAnyFarmWghtDist.1000m.sum)
+anova(Betadisper.ARGcluster.exp.nAnyFarmWghtDist.3000m.sum)
+anova(Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5)
+anova(Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5)
+
+plot(Betadisper.ARGcluster.exp.MinDistAnyFarm.NEG)
+plot(Betadisper.ARGcluster.exp.MinDistAnyFarm.INV)
+plot(Betadisper.ARGcluster.exp.AllFarm.3000m)
+plot(Betadisper.ARGcluster.exp.AllFarm.1000m)
+plot(Betadisper.ARGcluster.exp.AllFarm.500m)
+plot(Betadisper.ARGcluster.exp.AllFarm.250m)
+plot(Betadisper.ARGcluster.exp.npigsWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.npoultryWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.ncowsWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.nhorsesWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.ngoatsWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.nsheepWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.nfuranimsWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.npigsWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.npoultryWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.ncowsWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.nhorsesWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.ngoatsWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.nsheepWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.nfuranimsWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.nAnyFarmWghtDist.1000m.sum)
+plot(Betadisper.ARGcluster.exp.nAnyFarmWghtDist.3000m.sum)
+plot(Betadisper.ARGcluster.exp.DISP_EUinPM10_AnnualAv_WP99.5)
+plot(Betadisper.ARGcluster.exp.DISP_PM10CONC_AnnualAv_WP99.5)
+
+# Running adonis2() function on all exposure proxy variables
+# set.seed as adonis() does a permutation test by selecting permutations at random
+names(ARG.cluster.dataframe.exp)
+set.seed(123)
+adonis.MinDistAnyFarm.NEG <- adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$MinDistAnyFarm.NEG, permutations = 999)
+set.seed(123)
+adonis.MinDistAnyFarm.INV <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$MinDistAnyFarm.INV, permutations = 999)
+set.seed(123)
+adonis.AllFarm.3000m <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$AllFarm.3000m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.1000m <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$AllFarm.1000m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.500m <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$AllFarm.500m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.250m <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$AllFarm.250m, permutations = 999)
+set.seed(123)
+adonis.npigsWghtDist.1000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$npigsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.npoultryWghtDist.1000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$npoultryWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.ncowsWghtDist.1000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$ncowsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nhorsesWghtDist.1000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nhorsesWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.ngoatsWghtDist.1000m.sum<-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$ngoatsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nsheepWghtDist.1000m.sum<-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nsheepWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.npigsWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$npigsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.npoultryWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$npoultryWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.ncowsWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$ncowsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nhorsesWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nhorsesWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.ngoatsWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$ngoatsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nsheepWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nsheepWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nAnyFarmWghtDist.1000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nAnyFarmWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nAnyFarmWghtDist.3000m.sum <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$nAnyFarmWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.DISP_EUinPM10_AnnualAv_WP99.5 <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5, permutations = 999)
+set.seed(123)
+adonis.DISP_PM10CONC_AnnualAv_WP99.5 <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5, permutations = 999)
+# None come out as significant.
+#print the p-values of each 
+adonis.MinDistAnyFarm.NEG$`Pr(>F)`
+adonis.MinDistAnyFarm.INV$`Pr(>F)`
+adonis.AllFarm.3000m$`Pr(>F)`
+adonis.AllFarm.1000m$`Pr(>F)`
+adonis.AllFarm.500m $`Pr(>F)`
+adonis.AllFarm.250m$`Pr(>F)`
+adonis.npigsWghtDist.1000m.sum$`Pr(>F)`
+adonis.npoultryWghtDist.1000m.sum$`Pr(>F)` 
+adonis.ncowsWghtDist.1000m.sum$`Pr(>F)` 
+adonis.nhorsesWghtDist.1000m.sum$`Pr(>F)`
+adonis.ngoatsWghtDist.1000m.sum$`Pr(>F)`
+adonis.nsheepWghtDist.1000m.sum$`Pr(>F)`
+adonis.npigsWghtDist.3000m.sum$`Pr(>F)`
+adonis.npoultryWghtDist.3000m.sum$`Pr(>F)` 
+adonis.ncowsWghtDist.3000m.sum$`Pr(>F)` 
+adonis.nhorsesWghtDist.3000m.sum$`Pr(>F)`
+adonis.ngoatsWghtDist.3000m.sum$`Pr(>F)` 
+adonis.nsheepWghtDist.3000m.sum$`Pr(>F)`
+adonis.nAnyFarmWghtDist.1000m.sum$`Pr(>F)`
+adonis.nAnyFarmWghtDist.3000m.sum$`Pr(>F)` 
+adonis.DISP_EUinPM10_AnnualAv_WP99.5$`Pr(>F)`
+adonis.DISP_PM10CONC_AnnualAv_WP99.5$`Pr(>F)` 
+
+# Print the R^2 of each exposure proxy - see the first column for the R2 of the exposure proxy 
+adonis.MinDistAnyFarm.NEG$R2
+adonis.MinDistAnyFarm.INV$R2
+adonis.AllFarm.3000m$R2
+adonis.AllFarm.1000m$R2
+adonis.AllFarm.500m $R2
+adonis.AllFarm.250m$R2
+adonis.npigsWghtDist.1000m.sum$R2
+adonis.npoultryWghtDist.1000m.sum$R2 
+adonis.ncowsWghtDist.1000m.sum$R2 
+adonis.nhorsesWghtDist.1000m.sum$R2
+adonis.ngoatsWghtDist.1000m.sum$R2
+adonis.nsheepWghtDist.1000m.sum$R2
+adonis.npigsWghtDist.3000m.sum$R2
+adonis.npoultryWghtDist.3000m.sum$R2 
+adonis.ncowsWghtDist.3000m.sum$R2 
+adonis.nhorsesWghtDist.3000m.sum$R2
+adonis.ngoatsWghtDist.3000m.sum$R2 
+adonis.nsheepWghtDist.3000m.sum$R2
+adonis.nAnyFarmWghtDist.1000m.sum$R2
+adonis.nAnyFarmWghtDist.3000m.sum$R2 
+adonis.DISP_EUinPM10_AnnualAv_WP99.5$R2
+adonis.DISP_PM10CONC_AnnualAv_WP99.5$R2
+# 2 variables came out as nearly significant: DISP_EUinPM10_AnnualAv_WP99.5 (p=0.078) & nhorsesWghtDist.3000m.sum (p=0.083) 
+
+
+# Re-run adonis2 with COPD status in the formula - as a covariate  - TBC
+# Maybe I need to add copd status to the PERMANOVA to adjust for differences?
+ARG.cluster.dataframe.exp$copdcaco <- ARGcluster.aggl.noblanks.LUR@sam_data$copdcaco # add copd status into the dataframe
+set.seed(123)
+adonis.MinDistAnyFarm.NEG.copd <- adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$copdcaco + ARG.cluster.dataframe.exp$MinDistAnyFarm.NEG, permutations = 999)
+
+adonis.MinDistAnyFarm.INV.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$MinDistAnyFarm.INV, permutations = 999)
+set.seed(123)
+adonis.AllFarm.3000m.copd <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$copdcaco + ARG.cluster.dataframe.exp$AllFarm.3000m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.1000m.copd <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$copdcaco + ARG.cluster.dataframe.exp$AllFarm.1000m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.500m.copd <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$copdcaco + ARG.cluster.dataframe.exp$AllFarm.500m, permutations = 999)
+set.seed(123)
+adonis.AllFarm.250m.copd <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$AllFarm.250m, permutations = 999)
+set.seed(123)
+adonis.npigsWghtDist.1000m.sum.copd <-adonis2(BC.distance.exp~ ARG.cluster.dataframe.exp$copdcaco + ARG.cluster.dataframe.exp$npigsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.npoultryWghtDist.1000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$npoultryWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.ncowsWghtDist.1000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$ncowsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nhorsesWghtDist.1000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nhorsesWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.ngoatsWghtDist.1000m.sum.copd<-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$ngoatsWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nsheepWghtDist.1000m.sum.copd<-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nsheepWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.npigsWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$npigsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.npoultryWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$npoultryWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.ncowsWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$ncowsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nhorsesWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nhorsesWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.ngoatsWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$ngoatsWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nsheepWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nsheepWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.nAnyFarmWghtDist.1000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nAnyFarmWghtDist.1000m.sum, permutations = 999)
+set.seed(123)
+adonis.nAnyFarmWghtDist.3000m.sum.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$nAnyFarmWghtDist.3000m.sum, permutations = 999)
+set.seed(123)
+adonis.DISP_EUinPM10_AnnualAv_WP99.5.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$DISP_EUinPM10_AnnualAv_WP99.5, permutations = 999)
+set.seed(123)
+adonis.DISP_PM10CONC_AnnualAv_WP99.5.copd <-adonis2(BC.distance.exp~ARG.cluster.dataframe.exp$copdcaco +  ARG.cluster.dataframe.exp$DISP_PM10CONC_AnnualAv_WP99.5, permutations = 999)
+
+# None come out as significant.
+#print the p-values of each 
+adonis.MinDistAnyFarm.NEG.copd$`Pr(>F)`
+adonis.MinDistAnyFarm.INV.copd$`Pr(>F)`
+adonis.AllFarm.3000m.copd$`Pr(>F)`
+adonis.AllFarm.1000m.copd$`Pr(>F)`
+adonis.AllFarm.500m.copd $`Pr(>F)`
+adonis.AllFarm.250m.copd$`Pr(>F)`
+adonis.npigsWghtDist.1000m.sum.copd$`Pr(>F)`
+adonis.npoultryWghtDist.1000m.sum.copd$`Pr(>F)` 
+adonis.ncowsWghtDist.1000m.sum.copd$`Pr(>F)` 
+adonis.nhorsesWghtDist.1000m.sum.copd$`Pr(>F)`
+adonis.ngoatsWghtDist.1000m.sum.copd$`Pr(>F)`
+adonis.nsheepWghtDist.1000m.sum.copd$`Pr(>F)`
+adonis.npigsWghtDist.3000m.sum.copd$`Pr(>F)`
+adonis.npoultryWghtDist.3000m.sum.copd$`Pr(>F)` 
+adonis.ncowsWghtDist.3000m.sum.copd$`Pr(>F)` 
+adonis.nhorsesWghtDist.3000m.sum.copd$`Pr(>F)`
+adonis.ngoatsWghtDist.3000m.sum.copd$`Pr(>F)` 
+adonis.nsheepWghtDist.3000m.sum.copd$`Pr(>F)`
+adonis.nAnyFarmWghtDist.1000m.sum.copd$`Pr(>F)`
+adonis.nAnyFarmWghtDist.3000m.sum.copd$`Pr(>F)` 
+adonis.DISP_EUinPM10_AnnualAv_WP99.5.copd$`Pr(>F)`
+adonis.DISP_PM10CONC_AnnualAv_WP99.5.copd$`Pr(>F)` 
+
+# Now all p-values are adjusted for copd status and none come out as significantly associated with beta diversity
+
+# Print the R^2 of each exposure proxy - see the first column for the R2 of the exposure proxy 
+
+adonis.MinDistAnyFarm.NEG.copd$R2
+adonis.MinDistAnyFarm.INV.copd$R2
+adonis.AllFarm.3000m.copd$R2
+adonis.AllFarm.1000m.copd$R2
+adonis.AllFarm.500m.copd $R2
+adonis.AllFarm.250m.copd$R2
+adonis.npigsWghtDist.1000m.sum.copd$R2
+adonis.npoultryWghtDist.1000m.sum.copd$R2 
+adonis.ncowsWghtDist.1000m.sum.copd$R2 
+adonis.nhorsesWghtDist.1000m.sum.copd$R2
+adonis.ngoatsWghtDist.1000m.sum.copd$R2
+adonis.nsheepWghtDist.1000m.sum.copd$R2
+adonis.npigsWghtDist.3000m.sum.copd$R2
+adonis.npoultryWghtDist.3000m.sum.copd$R2 
+adonis.ncowsWghtDist.3000m.sum.copd$R2 
+adonis.nhorsesWghtDist.3000m.sum.copd$R2
+adonis.ngoatsWghtDist.3000m.sum.copd$R2 
+adonis.nsheepWghtDist.3000m.sum.copd$R2
+adonis.nAnyFarmWghtDist.1000m.sum.copd$R2
+adonis.nAnyFarmWghtDist.3000m.sum.copd$R2 
+adonis.DISP_EUinPM10_AnnualAv_WP99.5.copd$R2
+adonis.DISP_PM10CONC_AnnualAv_WP99.5.copd$R2 
+
+
+```
+#### Multivariable PERMANOVA 
+```{r}
+#' Multiple Permanovas
+#'
+#'Function performs individual, \code{\link{adonis}}-style permanovas for every/selected elements of \code{sample_variables(physeq)}
+#'
+#' @param physeq phyloseq object. A distance matrix is created using \code{otu_table(physeq)}; permanovas are computed for each element of \code{sample_variables(physeq)}
+#' @param distm choice of dissimilarity index according to \code{\link{vegdist}}. Options are "manhattan", "euclidean", "canberra", "bray", "kulczynski", "jaccard",
+#'              "gower", "altGower", "morisita", "horn", "mountford", "raup" , "binomial", "chao", "cao" or "mahalanobis".
+#' @param perms the number of permutations to be performed. Default is 999
+#' @param vars Empty=default tests all metadata variables (should be factor levels >=2). Otherwise give a vector c("var1","var2",...etc)
+#' @param verbose boolean. Default is TRUE and prints progress.
+#' @param terms character vector containing the variable names to be used in a multivariable model formula passed to adonis.
+#'
+#'
+#' @return a dataframe containing p-values of each comparison in the first column, and the number of levels for that variable in the second.
+#'
+#' @export
+#' @import vegan
+#' @import phyloseq
+#' @note if \code{sample_data(physeq)} contains NAs, the function will convert these to an additional level "none"
+#' @note Added the complete adonis output in verbose mode (alex 20200515)
+#' @note Added option to specifcy a formula which is passed to the adonis function.  
+#'
+#' @author Stephanie Jurburg and updated/extended by Alex Bossers \email{alex.bossers@wur.nl} and Warner van Kersen \email{w.vankersen@uu.nl}
+#' @examples
+#'
+#' per <- permanovas(rarefied, "bray")
+#'
+#'
+#'
+
+permanovas_formula <- function(physeq, distm="bray", perms=999, vars="", verbose=TRUE,terms=NULL) {
+  
+  if( vars[1] == "" ) {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq))), factor))
+  } else {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq)[,vars])), factor))
+  }
+  
+  if (physeq@otu_table@taxa_are_rows ==TRUE ) {
+    otutab <- t(otu_table(physeq))
+  } else {
+    otutab <- (otu_table(physeq))
+  }
+  
+  distn <- vegdist(decostand(otutab, "hellinger"), method=distm)
+  if(verbose){
+    message( paste0("Using Hellinger transformed data and distance metric '",distm,"'") )
+  }
+  
+  
+  if(is.null(terms)){ # No terms specified, run univariate permanova's
+  
+  ADONIS <- matrix(nrow=length(vars), ncol=2)
+  row.names(ADONIS) <- colnames(vars)
+  colnames(ADONIS) <- c("P.value", "Levels")  
+    
+  for (i in seq_along (vars)) {
+    if (anyNA(vars[[i]])){
+      levels(vars[[i]]) <- c(levels(vars[[i]]), "none")
+      vars[[i]][is.na(vars[[i]])] <-  "none"
+    }
+    if ( nlevels(vars[[i]]) == 1 ) {
+      message( paste0( "Skipping variable '",rownames(ADONIS)[i],"', not enough levels!") )
+      next
+    }
+    
+    adonisResult <- adonis(distn~as.factor(na.pass(vars[[1]])), permutations=perms)
+    if(verbose){
+      cat(paste0("\nVariable: ",colnames(vars)[i]),"\n")
+      print(adonisResult)
+      cat("\n\n")
+    }
+    ADONIS[i,1] <- adonisResult$aov.tab$`Pr(>F)`[1]
+    ADONIS[i,2] <- nlevels(vars[[i]])
+  }
+  return(ADONIS)
+  }  
+  else{
+  # Define formula using terms
+  form = reformulate(terms,"distn")
+  adonisResult <- adonis(form,data=vars[,names(vars) %in% terms], permutations=perms)
+  return(adonisResult)
+  }
+}
+
+# Run the multivariate PERMANOVA 
+# specify terms in the formula
+names(ARGcluster.aggl.noblanks.exp@sam_data) # print names of metadata fields 
+ARGcluster.aggl.noblanks.exp@sam_data$copdcaco <- ARGcluster.aggl.noblanks@sam_data$copdcaco # add in COPD status into metadata
+names(ARGcluster.aggl.noblanks.exp@sam_data)
+# "MinDistAnyFarm.NEG","MinDistAnyFarm.INV","AllFarm.3000m","AllFarm.1000m", "AllFarm.500m"                  "AllFarm.250m"                  "npigsWghtDist.1000m.sum","npoultryWghtDist.1000m.sum","ncowsWghtDist.1000m.sum","nhorsesWghtDist.1000m.sum","ngoatsWghtDist.1000m.sum","nsheepWghtDist.1000m.sum","nfuranimsWghtDist.1000m.sum","npigsWghtDist.3000m.sum","npoultryWghtDist.3000m.sum","ncowsWghtDist.3000m.sum","nhorsesWghtDist.3000m.sum","ngoatsWghtDist.3000m.sum","nsheepWghtDist.3000m.sum","nfuranimsWghtDist.3000m.sum","nAnyFarmWghtDist.1000m.sum","nAnyFarmWghtDist.3000m.sum","DISP_EUinPM10_AnnualAv_WP99.5","DISP_PM10CONC_AnnualAv_WP99.5","copdcaco"  
+# I don't want to include the fur animals variables so not included in variables and terms parameters
+variables_for_multivariable_permanova <- c("MinDistAnyFarm.NEG","MinDistAnyFarm.INV","AllFarm.3000m","AllFarm.1000m","AllFarm.500m","AllFarm.250m","npigsWghtDist.1000m.sum","npoultryWghtDist.1000m.sum","ncowsWghtDist.1000m.sum","nhorsesWghtDist.1000m.sum","ngoatsWghtDist.1000m.sum","nsheepWghtDist.1000m.sum","npigsWghtDist.3000m.sum","npoultryWghtDist.3000m.sum","ncowsWghtDist.3000m.sum","nhorsesWghtDist.3000m.sum","ngoatsWghtDist.3000m.sum","nsheepWghtDist.3000m.sum","nAnyFarmWghtDist.1000m.sum","nAnyFarmWghtDist.3000m.sum","DISP_EUinPM10_AnnualAv_WP99.5","DISP_PM10CONC_AnnualAv_WP99.5","copdcaco")
+terms_vector <- c("MinDistAnyFarm.NEG","MinDistAnyFarm.INV","AllFarm.3000m","AllFarm.1000m","AllFarm.500m","AllFarm.250m","npigsWghtDist.1000m.sum","npoultryWghtDist.1000m.sum","ncowsWghtDist.1000m.sum","nhorsesWghtDist.1000m.sum","ngoatsWghtDist.1000m.sum","nsheepWghtDist.1000m.sum","npigsWghtDist.3000m.sum","npoultryWghtDist.3000m.sum","ncowsWghtDist.3000m.sum","nhorsesWghtDist.3000m.sum","ngoatsWghtDist.3000m.sum","nsheepWghtDist.3000m.sum","nAnyFarmWghtDist.1000m.sum","nAnyFarmWghtDist.3000m.sum","DISP_EUinPM10_AnnualAv_WP99.5","DISP_PM10CONC_AnnualAv_WP99.5","copdcaco")
+
+Multivar.permanova <- permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="bray", perms=999, vars=variables_for_multivariable_permanova, verbose=TRUE,terms=terms_vector)
+
+Multivar.permanova <- permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="bray", perms=999,terms=c("MinDistAnyFarm.NEG","MinDistAnyFarm.INV","AllFarm.3000m"))
+
+saveRDS(ARGcluster.aggl.noblanks.exp, "PS_Object_BCH_PERMANOVA")
+
+# Error about colnames received - researched online - try changing adonis function to adonis2 function...
+permanovas_formula_adonis2 <- function(physeq, distm="bray", perms=999, vars="", verbose=TRUE,terms=NULL) {
+  
+  if( vars[1] == "" ) {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq))), factor))
+  } else {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq)[,vars])), factor))
+  }
+  
+  if (physeq@otu_table@taxa_are_rows ==TRUE ) {
+    otutab <- t(otu_table(physeq))
+  } else {
+    otutab <- (otu_table(physeq))
+  }
+  
+  distn <- vegdist(decostand(otutab, "hellinger"), method=distm)
+  if(verbose){
+    message( paste0("Using Hellinger transformed data and distance metric '",distm,"'") )
+  }
+  
+  
+  if(is.null(terms)){ # No terms specified, run univariate permanova's
+  
+  ADONIS <- matrix(nrow=length(vars), ncol=2)
+  row.names(ADONIS) <- colnames(vars)
+  colnames(ADONIS) <- c("P.value", "Levels")  
+    
+  for (i in seq_along (vars)) {
+    if (anyNA(vars[[i]])){
+      levels(vars[[i]]) <- c(levels(vars[[i]]), "none")
+      vars[[i]][is.na(vars[[i]])] <-  "none"
+    }
+    if ( nlevels(vars[[i]]) == 1 ) {
+      message( paste0( "Skipping variable '",rownames(ADONIS)[i],"', not enough levels!") )
+      next
+    }
+    
+    adonisResult <- adonis2(distn~as.factor(na.pass(vars[[1]])), permutations=perms)
+    if(verbose){
+      cat(paste0("\nVariable: ",colnames(vars)[i]),"\n")
+      print(adonisResult)
+      cat("\n\n")
+    }
+    ADONIS[i,1] <- adonisResult$aov.tab$`Pr(>F)`[1]
+    ADONIS[i,2] <- nlevels(vars[[i]])
+  }
+  return(ADONIS)
+  }  
+  else{
+  # Define formula using terms
+  form = reformulate(terms,"distn")
+  adonisResult <- adonis2(form,data=vars[,names(vars) %in% terms], permutations=perms)
+  return(adonisResult)
+  }
+}
+
+
+adonis2_multivar_perm <- permanovas_formula_adonis2(ARGcluster.aggl.noblanks.exp, distm="bray", perms=999, vars=variables_for_multivariable_permanova, verbose=TRUE,terms=terms_vector)
+# I now get some output but not what I'm looking for...
+
+# New try - 03/03/2022
+
+factor(ARGcluster.aggl.noblanks.exp@sam_data$)
+
+# make into factors 
+# copdcaco and n farms 500m 
+# make into factors 
+# leave vars section blank
+# form - enter formula 
+# try new function first of all
+
+permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="bray",vars="copdcaco", perms=999, verbose=TRUE,form=distn~copdcaco)
+
+ARGcluster.aggl.noblanks.exp@sam_data$MinDistAnyFarm.NEG
+debug(permanovas_formula)
+```
+#### Bivariable PERMANOVA 
+```{r}
+#' Multiple Permanovas
+#'
+#'Function performs individual, \code{\link{adonis}}-style permanovas for every/selected elements of \code{sample_variables(physeq)}
+#'
+#' @param physeq phyloseq object. A distance matrix is created using \code{otu_table(physeq)}; permanovas are computed for each element of \code{sample_variables(physeq)}
+#' @param distm choice of dissimilarity index according to \code{\link{vegdist}}. Options are "manhattan", "euclidean", "canberra", "bray", "kulczynski", "jaccard",
+#'              "gower", "altGower", "morisita", "horn", "mountford", "raup" , "binomial", "chao", "cao" or "mahalanobis".
+#' @param perms the number of permutations to be performed. Default is 999
+#' @param vars Empty=default tests all metadata variables (should be factor levels >=2). Otherwise give a vector c("var1","var2",...etc)
+#' @param verbose boolean. Default is TRUE and prints progress.
+#' @param terms character vector containing the variable names to be used in a multivariable model formula passed to adonis.
+#'
+#'
+#' @return a dataframe containing p-values of each comparison in the first column, and the number of levels for that variable in the second.
+#'
+#' @export
+#' @import vegan
+#' @import phyloseq
+#' @note if \code{sample_data(physeq)} contains NAs, the function will convert these to an additional level "none"
+#' @note Added the complete adonis output in verbose mode (alex 20200515)
+#' @note Added option to specifcy a formula which is passed to the adonis function.  
+#'
+#' @author Stephanie Jurburg and updated/extended by Alex Bossers \email{alex.bossers@wur.nl} and Warner van Kersen \email{w.vankersen@uu.nl}
+#' @examples
+#'
+#' per <- permanovas(rarefied, "bray")
+#'
+#'
+#'
+
+permanovas_formula <- function(physeq, distm="bray", perms=999, vars="", verbose=TRUE,terms=NULL) {
+  
+  if( vars[1] == "" ) {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq))), factor))
+  } else {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq)[,vars])), factor))
+  }
+  
+  if (physeq@otu_table@taxa_are_rows ==TRUE ) {
+    otutab <- t(otu_table(physeq))
+  } else {
+    otutab <- (otu_table(physeq))
+  }
+  
+  distn <- vegdist(decostand(otutab, "hellinger"), method=distm)
+  if(verbose){
+    message( paste0("Using Hellinger transformed data and distance metric '",distm,"'") )
+  }
+  
+  
+  if(is.null(terms)){ # No terms specified, run univariate permanova's
+  
+  ADONIS <- matrix(nrow=length(vars), ncol=2)
+  row.names(ADONIS) <- colnames(vars)
+  colnames(ADONIS) <- c("P.value", "Levels")  
+    
+  for (i in seq_along (vars)) {
+    if (anyNA(vars[[i]])){
+      levels(vars[[i]]) <- c(levels(vars[[i]]), "none")
+      vars[[i]][is.na(vars[[i]])] <-  "none"
+    }
+    if ( nlevels(vars[[i]]) == 1 ) {
+      message( paste0( "Skipping variable '",rownames(ADONIS)[i],"', not enough levels!") )
+      next
+    }
+    
+    adonisResult <- adonis(distn~as.factor(na.pass(vars[[1]])), permutations=perms)
+    if(verbose){
+      cat(paste0("\nVariable: ",colnames(vars)[i]),"\n")
+      print(adonisResult)
+      cat("\n\n")
+    }
+    ADONIS[i,1] <- adonisResult$aov.tab$`Pr(>F)`[1]
+    ADONIS[i,2] <- nlevels(vars[[i]])
+  }
+  return(ADONIS)
+  }  
+  else{
+  # Define formula using terms
+  form = reformulate(terms,"distn")
+  adonisResult <- adonis(form,data=vars[,names(vars) %in% terms], permutations=perms)
+  return(adonisResult)
+  }
+}
+
+# New version of function that WvK created following issues with the previous one - try with this version first
+permanovas_formula2 <- function(physeq, distm="bray", perms=999, vars="", verbose=TRUE,form=NULL) {
+  
+  if( vars[1] == "" ) {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq))), factor))
+  } else {
+    vars <- as.data.frame(lapply(as.data.frame(as.matrix(sample_data(physeq)[,vars])), factor))
+  }
+  
+  if (physeq@otu_table@taxa_are_rows ==TRUE ) {
+    otutab <- t(otu_table(physeq))
+  } else {
+    otutab <- (otu_table(physeq))
+  }
+  
+  distn <- vegdist(decostand(otutab, "hellinger"), method=distm)
+  if(verbose){
+    message( paste0("Using Hellinger transformed data and distance metric '",distm,"'") )
+  }
+  
+  
+  if(is.null(form)){ # No terms specified, run univariate permanova's
+  
+  ADONIS <- matrix(nrow=length(vars), ncol=2)
+  row.names(ADONIS) <- colnames(vars)
+  colnames(ADONIS) <- c("P.value", "Levels")  
+    
+  for (i in seq_along (vars)) {
+    if (anyNA(vars[[i]])){
+      levels(vars[[i]]) <- c(levels(vars[[i]]), "none")
+      vars[[i]][is.na(vars[[i]])] <-  "none"
+    }
+    if ( nlevels(vars[[i]]) == 1 ) {
+      message( paste0( "Skipping variable '",rownames(ADONIS)[i],"', not enough levels!") )
+      next
+    }
+    
+    adonisResult <- adonis(distn~as.factor(na.pass(vars[[1]])), permutations=perms)
+    if(verbose){
+      cat(paste0("\nVariable: ",colnames(vars)[i]),"\n")
+      print(adonisResult)
+      cat("\n\n")
+    }
+    ADONIS[i,1] <- adonisResult$aov.tab$`Pr(>F)`[1]
+    ADONIS[i,2] <- nlevels(vars[[i]])
+  }
+  return(ADONIS)
+  }  
+  else{
+  # Define formula using terms
+  adonisResult <- adonis(form,data=vars[,names(vars) %in% terms], permutations=perms)
+  return(adonisResult)
+  }
+}
+
+# New try - 14/03/2022
+ARGcluster.aggl.noblanks.exp.quant@sam_data$copdcaco <- Final.ps.noblanks@sam_data$copdcaco
+factor(ARGcluster.aggl.noblanks.exp.quant@sam_data$copdcaco)
+
+# make into factors 
+# copdcaco and n farms 500m 
+# make into factors 
+# leave vars section blank
+# form - enter formula 
+# try new function first of all
+
+permanovas_formula(ARGcluster.aggl.noblanks.exp.quant, distm="bray",vars="copdcaco", perms=999, verbose=TRUE,form=distn~copdcaco)
+
+# make variable into factor
+factor(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum)
+2
+permanovas_formula2(ARGcluster.aggl.noblanks.exp, distm="bray",vars=c("copdcaco", "ngoatsWghtDist.3000m.sum"), perms=999, verbose=TRUE,form=distn~copdcaco + ngoatsWghtDist.3000m.sum)
+
+permanovas_formula2(ARGcluster.aggl.noblanks.exp, distm="bray", perms=999, verbose=TRUE,form=distn~copdcaco + ngoatsWghtDist.3000m.sum)
+
+undebug(permanovas_formula2)
+
+# All attempts not working
+
+# Will do manually - see chunk above for all adonis functions with copd status included as variable
+
+```
+
+### DA analysis
+#### DESeq2 (unfiltered data)
+```{r}
+# Since the DESeq2 function requires count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
+Countdata.DESeq2 # This is the ps object to be used for DESeq2 analysis (not gene length corrected but corrected for input volumes and qPCR bacterial counts). BUT this is not at the 90% cluster level so I should agglomerate this ps object (using previously created tax_glom2 function from AB - see below too)
+
+# Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
+ARGcluster.aggl.DESeq2 <- tax_glom2(Countdata.DESeq2, taxrank=rank_names(Countdata.DESeq2)[6], NArm=TRUE)
+taxa_names(ARGcluster.aggl.DESeq2)
+# Confused why the 'taxa_names' are not the arg cluster names? AB responded saying: "What you see is perfectly normal. If you checkout the tax_table you will see that the lowest level is cluster. The lower ranks should be NA. That is why you use explaining Ps object names to realise some aggregation happened. The data is underneath still linked on indiv accno level but incomplete. Only one per arg cluster should be present.  If you now directly ask the taxon name it is indeed "wrong" the accession name. Just use the arg cluster name corresponding to it and you should be fine. Most functions suited for Ps object allow to mention the tax rank or the fill rank to use. They handle it for you underneath in the same way.No worries, just check above and if that matches. Just continue and be sure to use the name of the tax rank. 
+# Check tax-table of ps object
+tax_table(ARGcluster.aggl.DESeq2)
+
+# Add new sample data (with exposure proxies) to the new ps object 
+ARGcluster.aggl.DESeq2.exp <- ARGcluster.aggl.DESeq2
+sample_data(ARGcluster.aggl.DESeq2.exp)
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.DESeq2.exp) <- sam.data.new
+ARGcluster.aggl.DESeq2.exp@sam_data
+
+# I will start with continuous exposure covariates in the DESeq2 analysis as a constant fold change is possible for each unit of increase of the variables 
+# column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
+colnames(ARGcluster.aggl.DESeq2.exp@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+
+#Inspect the new ps object
+ARGcluster.aggl.DESeq2.exp
+ARGcluster.aggl.DESeq2.exp@otu_table # clusters labelled correctly 
+ARGcluster.aggl.DESeq2.exp@sam_data # exposure proxy sample data added 
+ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
+str(ARGcluster.aggl.DESeq2.exp)
+
+# Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
+# Start with assessing endotoxin concentration effects
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~DISP_EUinPM10_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- results(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+head(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered <- deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont[order(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont$pvalue),]
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered #tet(O/W/32/O/W/O) has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered$padj < 0.1, na.rm=TRUE) # 5 ARG clusters are <0.1
+
+# Plot to show the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. Points will be colored red if the adjusted p value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
+plotMA(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, ylim=c(-2,2))
+
+# Shrink the log2fold changes as these provide better LFC estimates
+resultsNames(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+BiocManager::install("apeglm")
+library(apeglm)
+resLFCshrink.exp.cont <- lfcShrink(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, coef="DISP_EUinPM10_AnnualAv_WP99.5", type="apeglm")
+resLFCshrink.exp.cont
+
+#It is more useful visualize the MA-plot for the shrunken log2 fold changes, which remove the noise associated with log2 fold changes from low count genes without requiring arbitrary filtering thresholds.
+plotMA(resLFCshrink.exp.cont, ylim=c(-2,2)) # plot looks odd...?
+
+# Using ggplot2 to create an MA plot
+# Load libraries
+# install.packages(c("ggplot2", "scales", "viridis"))
+library(ggplot2)
+library(scales) # needed for oob parameter
+library(viridis)
+# Coerce to a data frame
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF <- as.data.frame(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+# Examine this data frame
+head(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF)
+# Set a boolean column for significance
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF$significant <- ifelse(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF$padj < .1, "Significant", NA)
+# Plot the results similar to DEseq2
+ggplot(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF, aes(baseMean, log2FoldChange, colour=significant)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3)) + scale_x_log10() + geom_hline(yintercept = 0, colour="tomato1", size=2) + labs(x="mean of normalized counts", y="log fold change") + scale_colour_manual(name="q-value", values=("Significant"="red"), na.value="grey50") + theme_bw()
+# Let's add some more detail
+ggplot(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF, aes(baseMean, log2FoldChange, colour=padj)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3)) + scale_x_log10() + geom_hline(yintercept = 0, colour="darkorchid4", size=1, linetype="longdash") + labs(x="mean of normalized counts", y="log fold change") + scale_colour_viridis(direction=-1, trans='sqrt') + theme_bw() + geom_density_2d(colour="black", size=2)
+
+# volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+with(subset(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+
+# Now look at PM10 concentration effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~DISP_PM10CONC_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- results(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+head(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered <- deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont[order(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont$pvalue),]
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered$padj < 0.1, na.rm=TRUE) # 2 ARG clusters have p-value <0.1
+
+
+# Now look at nhorsesWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~nhorsesWghtDist.3000m.sum)
+
+# RUN  DESeq function 
+deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont <- results(deseq2.exp.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont[order(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+
+
+
+# Now look at ngoatsWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~ngoatsWghtDist.3000m.sum)
+
+# RUN  DESeq function 
+deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont <- results(deseq2.exp.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont[order(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+
+
+# DESeq2 with exposure quantiles
+# Now I need to categorise my exposure proxy variables which are currently continuous numeric to quartiles (factor variables)
+# I will use the cut() function 
+?cut
+# MinDistAnyFarm.NEG
+ARGcluster.aggl.DESeq2.exp.quart <- ARGcluster.aggl.DESeq2.exp
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG, breaks=4, labels =c("1st quartile (minDistAnyFarm.NEG)", "2nd quartile (minDistAnyFarm.NEG)", "3rd quartile (minDistAnyFarm.NEG)", "4th quartile (minDistAnyFarm.NEG)"))
+# MinDistAnyFarm.INV
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.INV<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.INV, breaks=4, labels =c("1st quartile (MinDistAnyFarm.INV)", "2nd quartile (MinDistAnyFarm.INV)", "3rd quartile (MinDistAnyFarm.INV)", "4th quartile (MinDistAnyFarm.INV)"))
+# AllFarm.3000m
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.3000m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.3000m, breaks=4, labels =c("1st quartile (AllFarm.3000m)", "2nd quartile (AllFarm.3000m)", "3rd quartile (AllFarm.3000m)", "4th quartile (AllFarm.3000m)"))
+#AllFarm.1000m
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.1000m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.1000m, breaks=4, labels =c("1st quartile (AllFarm.1000m)", "2nd quartile (AllFarm.1000m)", "3rd quartile (AllFarm.1000m)", "4th quartile (AllFarm.1000m)"))
+#AllFarm.500m
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.500m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.500m, breaks=4, labels =c("1st quartile (AllFarm.500m)", "2nd quartile (AllFarm.500m)", "3rd quartile (AllFarm.500m)", "4th quartile (AllFarm.500m)"))
+#AllFarm.250m
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.250m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.250m, breaks=4, labels =c("1st quartile (AllFarm.250m)", "2nd quartile (AllFarm.250m)", "3rd quartile (AllFarm.250m)", "4th quartile (AllFarm.250m)"))
+#npigsWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.1000m.sum)", "2nd quartile (npigsWghtDist.1000m.sum)", "3rd quartile (npigsWghtDist.1000m.sum)", "4th quartile (npigsWghtDist.1000m.sum)"))
+#npoultryWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.1000m.sum)", "2nd quartile (npoultryWghtDist.1000m.sum)", "3rd quartile (npoultryWghtDist.1000m.sum)", "4th quartile (npoultryWghtDist.1000m.sum)"))
+#ncowsWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.1000m.sum<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.1000m.sum)", "2nd quartile (ncowsWghtDist.1000m.sum)", "3rd quartile (ncowsWghtDist.1000m.sum)", "4th quartile (ncowsWghtDist.1000m.sum)"))
+#nhorsesWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.1000m.sum)", "2nd quartile (nhorsesWghtDist.1000m.sum)", "3rd quartile (nhorsesWghtDist.1000m.sum)", "4th quartile (nhorsesWghtDist.1000m.sum)"))
+#ngoatsWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
+#nsheepWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.1000m.sum)", "2nd quartile (nsheepWghtDist.1000m.sum)", "3rd quartile (nsheepWghtDist.1000m.sum)", "4th quartile (nsheepWghtDist.1000m.sum)"))
+#nfuranimsWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.1000m.sum)", "2nd quartile (nfuranimsWghtDist.1000m.sum)", "3rd quartile (nfuranimsWghtDist.1000m.sum)", "4th quartile (nfuranimsWghtDist.1000m.sum)"))
+#npigsWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.3000m.sum)", "2nd quartile (npigsWghtDist.3000m.sum)", "3rd quartile (npigsWghtDist.3000m.sum)", "4th quartile (npigsWghtDist.3000m.sum)"))
+#npoultryWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.3000m.sum)", "2nd quartile (npoultryWghtDist.3000m.sum)", "3rd quartile (npoultryWghtDist.3000m.sum)", "4th quartile (npoultryWghtDist.3000m.sum)"))
+#ncowsWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.3000m.sum)", "2nd quartile (ncowsWghtDist.3000m.sum)", "3rd quartile (ncowsWghtDist.3000m.sum)", "4th quartile (ncowsWghtDist.3000m.sum)"))
+#nhorsesWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.3000m.sum)", "2nd quartile (nhorsesWghtDist.3000m.sum)", "3rd quartile (nhorsesWghtDist.3000m.sum)", "4th quartile (nhorsesWghtDist.3000m.sum)"))
+#ngoatsWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.3000m.sum)", "2nd quartile (ngoatsWghtDist.3000m.sum)", "3rd quartile (ngoatsWghtDist.3000m.sum)", "4th quartile (ngoatsWghtDist.3000m.sum)"))
+#nsheepWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.3000m.sum)", "2nd quartile (nsheepWghtDist.3000m.sum)", "3rd quartile (nsheepWghtDist.3000m.sum)", "4th quartile (nsheepWghtDist.3000m.sum)"))
+#nfuranimsWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.3000m.sum)", "2nd quartile (nfuranimsWghtDist.3000m.sum)", "3rd quartile (nfuranimsWghtDist.3000m.sum)", "4th quartile (nfuranimsWghtDist.3000m.sum)"))
+#nAnyFarmWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.1000m.sum)", "2nd quartile (nAnyFarmWghtDist.1000m.sum)", "3rd quartile (nAnyFarmWghtDist.1000m.sum)", "4th quartile (nAnyFarmWghtDist.1000m.sum)"))
+#nAnyFarmWghtDist.3000m.sum
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.3000m.sum)", "2nd quartile (nAnyFarmWghtDist.3000m.sum)", "3rd quartile (nAnyFarmWghtDist.3000m.sum)", "4th quartile (nAnyFarmWghtDist.3000m.sum)"))
+#DISP_EUinPM10_AnnualAv_WP99.5
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "2nd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "3rd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "4th quartile (DISP_EUinPM10_AnnualAv_WP99.5)"))
+#DISP_PM10CONC_AnnualAv_WP99.5
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "2nd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "3rd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "4th quartile (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+
+# column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
+colnames(ARGcluster.aggl.DESeq2.exp.quart@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+
+#Inspect the new ps object
+ARGcluster.aggl.DESeq2.exp.quart
+ARGcluster.aggl.DESeq2.exp.quart@otu_table # clusters labelled correctly 
+ARGcluster.aggl.DESeq2.exp.quart@sam_data # exposure proxy sample data added 
+ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG # exposure proxy data is in quartiles 
+
+# Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
+# Convert phyloseq data to DESeq2 dataset object - start with endotoxin concentration
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.quart,~DISP_EUinPM10_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- results(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)
+head(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart.ordered <- deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart[order(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart$pvalue),]
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.ordered # No ARGs have padj <0.1 
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have padj <0.1
+
+
+#PM10 concentration 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.quart,~DISP_PM10CONC_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- results(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)
+head(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart.ordered <- deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart[order(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart$pvalue),]
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart.ordered # No ARGs have padj <0.1 
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have padj <0.1
+
+
+# convert exposure proxies into top and bottom halves 
+#DISP_EUinPM10_AnnualAv_WP99.5
+ARGcluster.aggl.DESeq2.exp.half <- ARGcluster.aggl.DESeq2.exp
+
+colnames(ARGcluster.aggl.DESeq2.exp.half@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+
+ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_EUinPM10_AnnualAv_WP99.5)", "Bottom half (DISP_EUinPM10_AnnualAv_WP99.5)"))
+#DISP_PM10CONC_AnnualAv_WP99.5
+ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_PM10CONC_AnnualAv_WP99.5)", "Bottom half (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+#Re-run Deseq2 with 'halved' data rather than in quartiles 
+# Convert phyloseq data to DESeq2 dataset object - start with endotoxin concentration
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~DISP_EUinPM10_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- results(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)
+head(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half.ordered <- deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half[order(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half$pvalue),]
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half.ordered # No ARGs have padj <0.1 
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half.ordered$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have padj <0.1
+
+
+#PM10 concentration 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~DISP_PM10CONC_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- results(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)
+head(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half.ordered <- deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half[order(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half$pvalue),]
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half.ordered # No ARGs have padj <0.1 
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have padj <0.1
+
+# Now I will look at some of the other exposure variables 
+#nhorsesWghtDist.1000m.sum
+ARGcluster.aggl.DESeq2.exp.half <- ARGcluster.aggl.DESeq2.exp
+colnames(ARGcluster.aggl.DESeq2.exp.half@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum, breaks=2, labels =c("Top half (nhorsesWghtDist.1000m.sum)", "Bottom half (nhorsesWghtDist.1000m.sum)"))
+deseq2.exp.nhorsesWghtDist.1000m.sum.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~nhorsesWghtDist.1000m.sum)
+# RUN  DESeq function 
+deseq2.exp.nhorsesWghtDist.1000m.sum.half <- DESeq(deseq2.exp.nhorsesWghtDist.1000m.sum.half)
+deseq2.results.exp.nhorsesWghtDist.1000m.sum.half <- results(deseq2.exp.nhorsesWghtDist.1000m.sum.half)
+deseq2.results.exp.nhorsesWghtDist.1000m.sum.half
+#summary of differential gene expression
+summary(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half)
+head(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half)$description
+# Order the results table by the smallest p value:
+deseq2.results.exp.nhorsesWghtDist.1000m.sum.half.ordered <- deseq2.results.exp.nhorsesWghtDist.1000m.sum.half[order(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half$pvalue),]
+deseq2.results.exp.nhorsesWghtDist.1000m.sum.half.ordered 
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half.ordered$padj < 0.1, na.rm=TRUE) # 4 ARG clusters have padj <0.1
+
+barchart(ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum)
+```
+<!-- ##### DESeq plots for poster -->
+<!-- ```{r} -->
+<!-- # Creating plots for poster presentation Jan 2022  -->
+<!-- # I will use dispersion modelled endotoxin as explanatory variable and tet(w) as outcome as this came out as signifcantly increased in deseq2 analysis with disp modelled endotoxin and PM10 -->
+<!-- endotox.dispmodel<- ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous  -->
+<!-- ARGcluster.aggl.DESeq2.exp@otu_table$tet(W) -->
+<!-- otu_table(ARGcluster.aggl.DESeq2.exp)[,"tet(W)"] -->
+<!-- endotox.dispmodel.df <- as.data.frame(ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5) -->
+<!-- tetW.df <-as.data.frame(otu_table(ARGcluster.aggl.DESeq2.exp)[,"tet(W)"]) -->
+<!-- rownames(tetW.df) <- NULL -->
+
+<!-- combined.df <- data.frame(endotox.dispmodel.df, tetW.df) # Put them in the same data.frame -->
+<!-- plot(combined.df$ARGcluster.aggl.DESeq2.exp.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined.df$tet.W.,  main="Scatterplot dispersion modelled endotoxin vs tet(W)", xlab="Disp. modelled endotoxin concentration", ylab="tet(W) concentratio", pch=19) -->
+<!-- # Looks like outliers are probably influencing this result  -->
+
+<!-- # Find another exposure proxy to present in poster -->
+<!-- # Try quantiles of endotoxin exposure -->
+<!-- ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is in quartiles  -->
+<!-- hist(sample_data(ARGcluster.aggl.DESeq2.exp.quart)[,"DISP_EUinPM10_AnnualAv_WP99.5"])  -->
+
+<!-- plot(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df) -->
+<!-- combined2.df <- data.frame(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df)  -->
+<!-- plot(combined2.df$ARGcluster.aggl.noblanks.exp.quant.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined2.df$tet.W.) -->
+
+
+<!-- # Split endotoxin exposure in half instead of in quantiles -->
+<!-- Endotoxin.splithalf <- ARGcluster.aggl.noblanks.exp -->
+<!-- Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 <- quantcut(Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=2, labels =c("Low", "High")) -->
+<!-- combined3.df <- data.frame(Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df)  -->
+<!-- boxplot.endotox <- plot(combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined3.df$tet.W., main="Comparison of tet(W) gene counts between high and low endotoxin exposed individuals", xlab="Endotoxin exposure level", ylab="tet(W) gene counts", pch=20, cex.main= 2, cex.lab= 2, cex.axis= 2) -->
+
+<!-- ggplot(combined3.df) -->
+
+<!-- geom_boxplot(outlier.colour="black", outlier.shape=16, -->
+<!--              outlier.size=2, notch=FALSE) -->
+
+<!-- p <- ggplot(combined3.df, aes(x="Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5", y="tet.W.")) +  -->
+<!--   geom_boxplot() -->
+
+<!-- ggplot(aes(x=combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, y=combined3.df$tet.W., fill=combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5)) +  -->
+<!--   geom_boxplot(width=0.5,lwd=1)+ -->
+<!--   labs(subtitle="Filling Boxplot with Colors by a Variable") -->
+
+<!-- boxplot(combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined3.df$tet.W., main="Comparison of tet(W) gene counts between high and low endotoxin exposed individuals", xlab="Endotoxin exposure level", ylab="tet(W) gene counts", pch=20) -->
+
+<!-- ``` -->
+
+#### DESeq2 (filtered - 0.1% relative abundance, 15% prevalent)
+```{r}
+# copy over the previously agglomerated and filtered ps object from my above DESeq2 analysis
+ARGcluster.aggl.DESeq2.filtered.exp <- ARGcluster.aggl.DESeq2.filtered.relative
+ARGcluster.aggl.DESeq2.filtered.exp
+tax_table(ARGcluster.aggl.DESeq2.filtered.exp)
+# 30 ARG Clusters 
+ARGcluster.aggl.DESeq2.filtered.exp@sam_data # But the sample data in this ps object does not include the exposure proxy data so I need to add this in
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.DESeq2.filtered.exp) <- sam.data.new
+ARGcluster.aggl.DESeq2.filtered.exp@sam_data
+
+# I will start with continuous exposure covariates in the DESeq2 analysis as a constant fold change is possible for each unit of increase of the variables 
+# Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
+# Start with assessing endotoxin concentration effects
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.filtered.endotoxin <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.filtered.exp,~DISP_EUinPM10_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.filtered.endotoxin <- DESeq(deseq2.exp.filtered.endotoxin)
+deseq2.results.exp.filtered.endotoxin<- results(deseq2.exp.filtered.endotoxin)
+deseq2.results.exp.filtered.endotoxin
+#summary of differential gene expression
+summary(deseq2.results.exp.filtered.endotoxin)
+head(deseq2.results.exp.filtered.endotoxin)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.filtered.endotoxin)$description
+# Order the results table by the smallest p value:
+deseq2.results.exp.filtered.endotoxin.ordered <- deseq2.results.exp.filtered.endotoxin[order(deseq2.results.exp.filtered.endotoxin$pvalue),]
+deseq2.results.exp.filtered.endotoxin.ordered 
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.filtered.endotoxin.ordered$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have p-value <0.1
+
+# Now look at PM10 concentration effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.filtered.PM10 <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.filtered.exp,~DISP_PM10CONC_AnnualAv_WP99.5)
+# RUN  DESeq function 
+deseq2.exp.filtered.PM10 <- DESeq(deseq2.exp.filtered.PM10)
+deseq2.results.exp.filtered.PM10 <- results(deseq2.exp.filtered.PM10)
+deseq2.results.exp.filtered.PM10
+#summary of differential gene expression
+summary(deseq2.results.exp.filtered.PM10)
+head(deseq2.results.exp.filtered.PM10)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.filtered.PM10)$description
+# Order the results table by the smallest p value:
+deseq2.results.exp.filtered.PM10.ordered <- deseq2.results.exp.filtered.PM10[order(deseq2.results.exp.filtered.PM10$pvalue),]
+deseq2.results.exp.filtered.PM10.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.filtered.PM10.ordered$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have p-value <0.1
+
+
+# Now look at nhorsesWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.filtered.nhorsesWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.filtered.exp,~nhorsesWghtDist.3000m.sum)
+# RUN  DESeq function 
+deseq2.exp.filtered.nhorsesWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.filtered.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont <- results(deseq2.exp.filtered.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont)$description
+# Order the results table by the smallest p value:
+deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont[order(deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont.ordered
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.filtered.nhorsesWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+
+# Now look at ngoatsWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.filtered.ngoatsWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.filtered.exp,~ngoatsWghtDist.3000m.sum)
+# RUN  DESeq function 
+deseq2.exp.filtered.ngoatsWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.filtered.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont <- results(deseq2.exp.filtered.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont)$description
+# Order the results table by the smallest p value:
+deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont[order(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont.ordered 
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+```
+#### ALDEx2
+```{r}
+BiocManager::install("ALDEx2")
+library(ALDEx2)
+
+# Use the previous ps object created above for the deseq2 analysis
+ARGcluster.aggl.DESeq2.exp
+ARGcluster.aggl.DESeq2.exp@otu_table # clusters labelled correctly 
+ARGcluster.aggl.DESeq2.exp@sam_data # exposure proxy sample data added 
+ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
+str(ARGcluster.aggl.DESeq2.exp)
+
+# create otu table for aldex2 analysis - this needs to be "A non-negative, integer-only data.frame or matrix with unique names for all rows and columns. Rows should contain genes and columns should contain sequencing read counts (i.e., sample vectors). Rows with 0 reads in each sample are deleted prior to analysis
+ALDEx2.exp.otutable.trans <- t(otu_table(ARGcluster.aggl.DESeq2.exp))
+ALDEx2.exp.otutable.trans.bill.round <- round(ALDEx2.exp.otutable.trans * 1000000000,0) # I multiply by billion as aldex2 requires that reads are all integers 
+ALDEx2.exp.otutable.df <- data.frame(ALDEx2.exp.otutable.trans.bill.round)
+# Then we set the comparison groups. This must be a vector of conditions in the same order as the samples in the input counts table.
+# I firstly test dispersion modelled endotoxin as the comparison variable: 
+ALDEx2.exp.DISPendotoxin <- sample_data(ARGcluster.aggl.DESeq2.exp)$DISP_EUinPM10_AnnualAv_WP99.5
+# Instead of using the simple aldex() function, I need to use aldex.corr as I am using a continuous variable (e.g. endotoxin concentration to begin with)
+# Firstly create the aldex.clr object
+ALDEx2.exp.clr <- aldex.clr(ALDEx2.exp.otutable.df, mc.samples = 128, verbose = FALSE, useMC=FALSE)
+# Now run the correlation assessment 
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable, using data returned returned by aldex.clr and a vector of the continuous variable.It returns results of Pearson, Spearman and Kendall tests.
+aldex2_endotoxin_continuous<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.DISPendotoxin)
+aldex2_endotoxin_continuous
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable (dispersion modelled endotoxin in this case), using data returned returned by aldex.clr and a vector of the continuous variable. Returns results of Pearson, Spearman and Kendall tests.
+# I will look at the BH corrected pearson correlation coefficient p-value (this is the column named: "pearson.eBH" (expected Benjamini-Hochberg corrected P value of the Pearson Product moment value for each feature)
+aldex2_endotoxin_continuous_reordered <- aldex2_endotoxin_continuous[order(aldex2_endotoxin_continuous$pearson.eBH),]
+# check the ARGs that were previously identified as differentially abundant to see whether there are significant correlations identified by ALDEx2
+count(aldex2_endotoxin_continuous_reordered$pearson.eBH < 0.1) 
+# 3 ARG clusters have an expected Benjamini-Hochberg corrected P-value of the Pearson Product moment value - these are the following ARG clusters: tet(K), blaSPU-1, msr(E)
+
+# Test for correlation with dispersion modelled PM10 now
+ALDEx2.exp.DISPPM10 <- sample_data(ARGcluster.aggl.DESeq2.exp)$DISP_PM10CONC_AnnualAv_WP99.5
+aldex2_PM10_continuous<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.DISPPM10)
+aldex2_PM10_continuous
+count(aldex2_PM10_continuous$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to dispersion modelled PM10
+aldex2_PM10_continuous_reordered <- aldex2_PM10_continuous[order(aldex2_PM10_continuous$pearson.eBH),]
+aldex2_PM10_continuous_reordered
+
+# Test for correlation with Number of horses weighted to distance in a 3000m buffer
+ALDEx2.exp.nhorsesWghtDist.3000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$nhorsesWghtDist.3000m.sum
+aldex2_nhorsesWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.nhorsesWghtDist.3000m.sum)
+aldex2_nhorsesWghtDist.3000m.sum
+count(aldex2_nhorsesWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+
+# Test for correlation with Number of goats weighted to distance in a 3000m buffer
+ALDEx2.exp.ngoatsWghtDist.3000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$ngoatsWghtDist.3000m.sum
+aldex2_ngoatsWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.ngoatsWghtDist.3000m.sum)
+aldex2_ngoatsWghtDist.3000m.sum
+count(aldex2_ngoatsWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+# list of all exposure proxy variables 
+names( ARGcluster.aggl.DESeq2.exp@sam_data)
+
+# Test for correlation with MinDistAnyFarm.NEG
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+# Test for correlation with MinDistAnyFarm.INV
+ALDEx2.exp.MinDistAnyFarm.INV <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.INV
+aldex2_MinDistAnyFarm.INV<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.INV)
+aldex2_MinDistAnyFarm.INV
+count(aldex2_MinDistAnyFarm.INV$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+# AllFarm.3000m
+ALDEx2.exp.AllFarm.3000m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.3000m
+aldex2_AllFarm.3000m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.3000m)
+aldex2_AllFarm.3000m
+count(aldex2_AllFarm.3000m$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+#AllFarm.1000m
+ALDEx2.exp.AllFarm.1000m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.1000m
+aldex2_AllFarm.1000m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.1000m)
+aldex2_AllFarm.1000m
+count(aldex2_AllFarm.1000m$pearson.eBH < 0.1) 
+
+# AllFarm.500m
+ALDEx2.exp.AllFarm.500m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.500m
+aldex2_AllFarm.500m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.500m)
+aldex2_AllFarm.500m
+count(aldex2_AllFarm.500m$pearson.eBH < 0.1) 
+
+# AllFarm.250m
+ALDEx2.exp.AllFarm.250m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.250m
+aldex2_AllFarm.250m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.250m)
+aldex2_AllFarm.250m
+count(aldex2_AllFarm.250m$pearson.eBH < 0.1) 
+# npigsWghtDist.1000m.sum
+ALDEx2.exp.npigsWghtDist.1000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$npigsWghtDist.1000m.sum
+aldex2_npigsWghtDist.1000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.npigsWghtDist.1000m.sum)
+aldex2_npigsWghtDist.1000m.sum
+count(aldex2_npigsWghtDist.1000m.sum$pearson.eBH < 0.1) 
+# npoultryWghtDist.1000m.sum
+ALDEx2.exp.npoultryWghtDist.1000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$npoultryWghtDist.1000m.sum
+aldex2_npoultryWghtDist.1000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.npoultryWghtDist.1000m.sum)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ncowsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nhorsesWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ngoatsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nsheepWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nfuranimsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# npigsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# npoultryWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ncowsWghtDist.3000m.sum    
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nhorsesWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ngoatsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nsheepWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nfuranimsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nAnyFarmWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nAnyFarmWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# DISP_EUinPM10_AnnualAv_WP99.5
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# DISP_PM10CONC_AnnualAv_WP99.5
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+
+```
+
+#### ALDEx2 (filtered - 0.1% relative abundance, 15% prevalent)
+```{r}
+library(ALDEx2)
+
+# copy over the previously agglomerated and filtered ps object from my above DESeq2 analysis
+ARGcluster.aggl.ALDEx2.filtered.exp <- ARGcluster.aggl.DESeq2.filtered.relative
+ARGcluster.aggl.ALDEx2.filtered.exp
+tax_table(ARGcluster.aggl.ALDEx2.filtered.exp)
+# 30 ARG Clusters 
+ARGcluster.aggl.ALDEx2.filtered.exp@sam_data # But the sample data in this ps object does not include the exposure proxy data so I need to add this in
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.ALDEx2.filtered.exp) <- sam.data.new
+ARGcluster.aggl.ALDEx2.filtered.exp@sam_data
+
+# create otu table for aldex2 analysis - this needs to be "A non-negative, integer-only data.frame or matrix with unique names for all rows and columns. Rows should contain genes and columns should contain sequencing read counts (i.e., sample vectors). Rows with 0 reads in each sample are deleted prior to analysis
+ALDEx2.filtered.exp.otutable.trans <- t(otu_table(ARGcluster.aggl.ALDEx2.filtered.exp))
+ALDEx2.filtered.exp.otutable.trans.bill.round <- round(ALDEx2.filtered.exp.otutable.trans * 1000000000,0) # I multiply by billion as aldex2 requires that reads are all integers 
+otutab.for.ALDEx2.exp.filtered <- data.frame(ALDEx2.filtered.exp.otutable.trans.bill.round)
+
+# Firstly create the aldex.clr object
+ALDEx2.exp.filtered.clr <- aldex.clr(otutab.for.ALDEx2.exp.filtered, mc.samples = 128, verbose = FALSE, useMC=FALSE)
+# Then we set the comparison groups. This must be a vector of conditions in the same order as the samples in the input counts table.
+ALDEx2.exp.filtered.DISPendotoxin <- sample_data(ARGcluster.aggl.ALDEx2.filtered.exp)$DISP_EUinPM10_AnnualAv_WP99.5
+# Instead of using the simple aldex() function, I need to use aldex.corr as I am using a continuous variable (e.g. endotoxin concentration to begin with)
+# Now run the correlation assessment 
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable, using data returned returned by aldex.clr and a vector of the continuous variable.It returns results of Pearson, Spearman and Kendall tests.
+aldex2.filtered.endotoxin<- aldex.corr(ALDEx2.exp.filtered.clr,ALDEx2.exp.filtered.DISPendotoxin)
+aldex2.filtered.endotoxin
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable (dispersion modelled endotoxin in this case), using data returned returned by aldex.clr and a vector of the continuous variable. Returns results of Pearson, Spearman and Kendall tests.
+# I will look at the BH corrected pearson correlation coefficient p-value (this is the column named: "pearson.eBH" (expected Benjamini-Hochberg corrected P value of the Pearson Product moment value for each feature)
+aldex2.filtered.endotoxin_reordered <- aldex2.filtered.endotoxin[order(aldex2.filtered.endotoxin$pearson.eBH),]
+# check the ARGs that were previously identified as differentially abundant to see whether there are significant correlations identified by ALDEx2
+count(aldex2.filtered.endotoxin$pearson.eBH < 0.1) 
+# 1 ARG cluster has an expected Benjamini-Hochberg corrected P-value of the Pearson Product moment value < 0.1: blaSPU-1
+
+# Test for correlation with dispersion modelled PM10 now
+ALDEx2.exp.DISPPM10 <- sample_data(ARGcluster.aggl.ALDEx2.filtered.exp)$DISP_PM10CONC_AnnualAv_WP99.5
+aldex2.filtered.PM10<- aldex.corr(ALDEx2.exp.filtered.clr,ALDEx2.exp.DISPPM10)
+aldex2.filtered.PM10
+count(aldex2.filtered.PM10$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to dispersion modelled PM10
+
+# Test for correlation with Number of horses weighted to distance in a 3000m buffer
+ALDEx2.exp.nhorsesWghtDist.3000m.sum <- ARGcluster.aggl.ALDEx2.filtered.exp@sam_data$nhorsesWghtDist.3000m.sum
+aldex2.filtered.nhorsesWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.filtered.clr,ALDEx2.exp.nhorsesWghtDist.3000m.sum)
+aldex2.filtered.nhorsesWghtDist.3000m.sum
+count(aldex2.filtered.nhorsesWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+
+# Test for correlation with Number of goats weighted to distance in a 3000m buffer
+ALDEx2.exp.ngoatsWghtDist.3000m.sum <- ARGcluster.aggl.ALDEx2.filtered.exp@sam_data$ngoatsWghtDist.3000m.sum
+aldex2.filtered.ngoatsWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.filtered.clr,ALDEx2.exp.ngoatsWghtDist.3000m.sum)
+aldex2.filtered.ngoatsWghtDist.3000m.sum
+count(aldex2.filtered.ngoatsWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+
+# Could try with other exposure proxies but have chosen these based on previous beta-diversity results and logic.
+```
