@@ -1,0 +1,325 @@
+# Alpha diversity
+
+**
+- Calculate several alpha diversity indices for COPD and control participants, including: Observed, Chao1, Shannon’s, Simpson’s, Evenness
+- Present COPD/control as side-by-side boxplots 
+- The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. Observing the data I see that there are a maximum of 7 decimals in the dataset but alpha diversity calculations require whole numbers...
+- I will multiply by 1,000,000,000 in order to remove all these decimals to do the alpha diversity calculations. 
+**
+
+```{r}
+Final.ps # this is the PS object which has been corrected but not clustered at the 90% identity level
+Final.ps.multiplybillion <- Final.ps
+Final.ps.multiplybillion@otu_table@.Data <- (Final.ps.multiplybillion@otu_table@.Data)*1000000000
+
+# Rename sample data codes
+Final.ps.multiplybillion@sam_data$copdcaco <- revalue(Final.ps.multiplybillion@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blanc'= 'blank'))
+
+# Plot alpha diversity measures
+plot_richness(Final.ps.multiplybillion, measures=c("Shannon", "Simpson","Observed"))
+
+# Create a scatterplot with color
+mycols3 <- c("COPD"="red", "control"="blue", "blank"="green")
+Alphadiversity.scatter.colour <- plot_richness(Final.ps.multiplybillion, x="copdcaco", measures=c("Shannon", "Simpson","Observed"), color="copdcaco")
+Alphadiversity.scatter.colour + scale_color_manual(values = mycols3, aesthetics = c("color", "fill"))
+
+# Calculate alpha diversity tables
+Shannon.table <- microbiome::alpha(Final.ps.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+SimpsonEvenness.table <- microbiome::alpha(Final.ps.multiplybillion, (index = "Simpson"), zeroes = TRUE)
+Observed.table <-  microbiome::alpha(Final.ps.multiplybillion, (index = "Observed"), zeroes = TRUE)
+
+# Add diversity tables to the metadata
+sample_data(Final.ps.multiplybillion)$shannon <- Shannon.table$diversity_shannon
+sample_data(Final.ps.multiplybillion)$SimpsonEvenness <- SimpsonEvenness.table$evenness_simpson
+sample_data(Final.ps.multiplybillion)$Observed <- Observed.table$observed
+
+# Create histograms of diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(Final.ps.multiplybillion)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# Check normality of the distributions
+shapiro.test(sample_data(Final.ps.multiplybillion)$shannon)
+shapiro.test(sample_data(Final.ps.multiplybillion)$SimpsonEvenness)
+shapiro.test(sample_data(Final.ps.multiplybillion)$Observed)
+
+# Shannon and Simpson are not normally distributed, Observed appears normally distributed
+
+# Create boxplots for COPD/control/blanks
+metadata.final.ps.billion <- sample_data(Final.ps.multiplybillion)
+# Make the 4 boxplots
+par(mfrow = c(2, 2))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = shannon )) + geom_boxplot(fill= c("blue","red", "green"))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = Observed)) + geom_boxplot(fill= c("blue","red", "green"))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = SimpsonEvenness))+ geom_boxplot(fill= c("blue","red", "green"))
+
+# BLANKS REMOVED FOR ANALYSIS
+# Now I should exclude the blanks and perform the analyses again - blanks will affect any statistical tests 
+# Firstly I need to get rid of the blanks from the ps object 
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+head(sample.names(Final.ps.multiplybillion))
+Final.ps.multiplybillion.noblanks <-  prune_samples(!sample_names(Final.ps.multiplybillion)%in%blancs, Final.ps.multiplybillion)
+
+# Plot alpha diversity measures
+plot_richness(Final.ps.multiplybillion.noblanks, x="copdcaco", measures=c("Shannon", "Chao1", "Observed", "Simpson", "Evenness"))
+
+# Add colour to the scatterplot
+mycols4 <- c("COPD"="red", "control"="blue")
+Alphadiversity.scatter.noblanks.colour <- plot_richness(Final.ps.multiplybillion.noblanks, x="copdcaco", measures=c("Observed", "Chao1", "Shannon", "Simpson"), color="copdcaco")
+Alphadiversity.scatter.noblanks.colour + scale_color_manual(values = mycols4, aesthetics = c("color", "fill"))
+
+# Create histograms of diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(Final.ps.multiplybillion.noblanks)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion.noblanks)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion.noblanks)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# check normality of these distributions across all the samples
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$shannon)
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$SimpsonEvenness)
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$Observed)
+# Shannon appears normally distributed but Simpson and Observed are not 
+
+# Create a dataframe for the sample data in the PS object 
+metadata.final.ps.billion.noblanks <- sam_data(Final.ps.multiplybillion.noblanks)
+
+# Create boxplots for COPD & controls 
+Shannon.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = shannon)) + 
+  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Shannon diversity") + 
+    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Shannon diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+Simpson.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
+  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Simpson Evenness diversity") + 
+    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Simpson Evenness diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+Observed.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = Observed)) + 
+  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Observed diversity") + 
+    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Observed diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+Shannon.diversity.plot
+Simpson.diversity.plot
+Observed.diversity.plot
+```
+
+### Calculate alpha diversity difference
+```{r}
+# Compare alpha diversity of COPD and control with a t-test or Mann-Whitney U test 
+
+# t-tests make the following assumptions: 
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+# 3: The two populations are normally distributed
+
+# Wilcoxon rank sum test makes the following assumptions:
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+
+# Therefore I will use t-test for shannon (normally distributed) and Wilcoxon rank sum test (Mann-Whitney U) for the others. 
+
+# t-test of shannon diversity between COPD and controls 
+shannon.t.test <- t.test(metadata.final.ps.billion.noblanks$shannon~ metadata.final.ps.billion.noblanks$copdcaco)
+shannon.t.test
+
+# t-test appears (just) significant - i.e. there is a significant difference in shannon alpha diversity between COPD and controls
+
+# Wilcoxon rank sum (Mann-Whitney U) test of other alpha diversity measures between COPD and controls
+# Chao1
+wilcox.test(metadata.final.ps.billion.noblanks$Chao1~metadata.final.ps.billion.noblanks$copdcaco)
+# Observed
+wilcox.test(metadata.final.ps.billion.noblanks$Observed~metadata.final.ps.billion.noblanks$copdcaco)
+# Simpson evenness
+wilcox.test(metadata.final.ps.billion.noblanks$SimpsonEvenness~metadata.final.ps.billion.noblanks$copdcaco)
+
+# Add t-test results to the boxplot
+Shannon.diversity.plot.pval <- Shannon.diversity.plot +  stat_compare_means(method = "t.test", size=6, label.x = 0.6, label.y = 3.2)
+Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=6, label.x = 0.6, label.y = 0.42)
+Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=6,label.x = 0.6, label.y = 100)
+
+ggsave("Output_files//Alpha_diversity//Shannon_diversity_plot.png", Shannon.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files//Alpha_diversity//Simpson_diversity_plot.png", Simpson.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files//Alpha_diversity//Observed_diversity_plot.png", Observed.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+
+# variance in boxplots appears homogenous 
+# Will check formally with levene's test
+#  2: homogeneity of variance assumption
+leveneTest(y = metadata.final.ps.billion.noblanks$shannon, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$Chao1, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$Observed, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$SimpsonEvenness, group = metadata.final.ps.billion.noblanks$copdcaco)
+# Yes all are non-significant- i.e. all homogeneous 
+```
+
+## Alpha diversity tests - 90% cluster level
+```{r}
+ARGcluster.aggl # PS object which is clustered
+ARGcluster.aggl.multiplybillion <- ARGcluster.aggl
+ARGcluster.aggl.multiplybillion@otu_table@.Data <- (ARGcluster.aggl.multiplybillion@otu_table@.Data)*1000000000
+
+# Rename sample data codes
+ARGcluster.aggl.multiplybillion@sam_data$copdcaco <- revalue(ARGcluster.aggl.multiplybillion@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blanc'= 'blank'))
+
+# Plot all alpha diversity measures
+plot_richness(ARGcluster.aggl.multiplybillion, measures=c("Shannon", "Simpson", "Observed"))
+
+# Create scatter plot with alpha diversity scores for COPD, controls (and blanks) separately
+plot_richness(ARGcluster.aggl.multiplybillion, x="copdcaco", measures=c("Shannon", "Simpson", "Observed"))
+
+#  Create scatter plot with colour
+mycols3 <- c("COPD"="red", "control"="blue", "blank"="green")
+Alphadiversity_scatter_clustered.colour <- plot_richness(ARGcluster.aggl.multiplybillion, x="copdcaco", measures=c("Shannon", "Simpson", "Observed"), color="copdcaco")
+Alphadiversity_scatter_clustered.colour + scale_color_manual(values = mycols3, aesthetics = c("color", "fill"))
+
+# Calculate alpha diversity tables
+Shannon.table.clustered <- microbiome::alpha(ARGcluster.aggl.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+SimpsonEvenness.table.clustered <- microbiome::alpha(ARGcluster.aggl.multiplybillion, (index = "Simpson"), zeroes = TRUE)
+Observed.table.clustered <-  microbiome::alpha(ARGcluster.aggl.multiplybillion, (index = "Observed"), zeroes = TRUE)
+
+# Now add the diversity tables to the metadata
+sample_data(ARGcluster.aggl.multiplybillion)$shannon <- Shannon.table.clustered$diversity_shannon
+sample_data(ARGcluster.aggl.multiplybillion)$SimpsonEvenness <- SimpsonEvenness.table.clustered$evenness_simpson
+sample_data(ARGcluster.aggl.multiplybillion)$Observed <- Observed.table.clustered$observed
+
+# Make a histograms of the diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(ARGcluster.aggl.multiplybillion)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(ARGcluster.aggl.multiplybillion)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(ARGcluster.aggl.multiplybillion)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# Check normality of these distributions across all the samples
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion)$shannon)
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion)$SimpsonEvenness)
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion)$Observed)
+
+# Observed index is normally distributed, Shannon and Simpson Evenness are not 
+
+# Create boxplots for COPD/control/blanks for the different alpha diversity measures
+metadata.ARGcluster.aggl.multiplybillion <- sample_data(ARGcluster.aggl.multiplybillion)
+# Make the 4 boxplots
+par(mfrow = c(2, 2))
+ggplot(metadata.ARGcluster.aggl.multiplybillion, aes(x = copdcaco, y = shannon )) + geom_boxplot(fill= c("blue","red", "green"))
+ggplot(metadata.ARGcluster.aggl.multiplybillion, aes(x = copdcaco, y = SimpsonEvenness))+ geom_boxplot(fill= c("blue","red", "green"))
+ggplot(metadata.ARGcluster.aggl.multiplybillion, aes(x = copdcaco, y = Observed)) + geom_boxplot(fill= c("blue","red", "green"))
+
+
+# BLANKS REMOVED FOR ANALYSIS
+# Now I should exclude the blanks and perform the analyses again - blanks will affect any statistical tests 
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+ARGcluster.aggl.multiplybillion.noblanks <-  prune_samples(!sample_names(ARGcluster.aggl.multiplybillion)%in%blancs, ARGcluster.aggl.multiplybillion)
+
+# Plot all alpha diversity measures
+plot_richness(ARGcluster.aggl.multiplybillion.noblanks, x="copdcaco", measures=c("Shannon", "Simpson","Observed"), color="copdcaco")
+
+#  Create scatter plot with colour
+mycols4 <- c("COPD"="red", "control"="blue")
+Alphadiversity_scatter_clustered_noblanks.colour <- plot_richness(ARGcluster.aggl.multiplybillion.noblanks, x="copdcaco", measures=c("Shannon", "Simpson", "Observed"), color="copdcaco")
+Alphadiversity_scatter_clustered_noblanks.colour + scale_color_manual(values = mycols3, aesthetics = c("color", "fill"))
+
+# Calculate alpha diversity tables
+Shannon.table.clustered.noblanks <- alpha(ARGcluster.aggl.multiplybillion.noblanks, index = "Shannon", zeroes = TRUE)
+SimpsonEvenness.table.clustered.noblanks <- alpha(ARGcluster.aggl.multiplybillion.noblanks, index = "Simpson", zeroes = TRUE)
+Observed.table.clustered.noblanks <- alpha(ARGcluster.aggl.multiplybillion.noblanks, index = "Observed", zeroes = TRUE)
+
+# Add diversity tables to the metadata
+sample_data(ARGcluster.aggl.multiplybillion.noblanks)$shannon <- Shannon.table.clustered.noblanks$diversity_shannon
+sample_data(ARGcluster.aggl.multiplybillion.noblanks)$SimpsonEvenness <- SimpsonEvenness.table.clustered.noblanks$evenness_simpson
+sample_data(ARGcluster.aggl.multiplybillion.noblanks)$Observed <- Observed.table.clustered.noblanks$observed
+
+# Create histograms of diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# check normality of these distributions across all the samples
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$shannon)
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$SimpsonEvenness)
+shapiro.test(sample_data(ARGcluster.aggl.multiplybillion.noblanks)$Observed)
+
+# Shannon and Simpson are not normally distributed, Observed appears normally distributed
+
+# Create a dataframe for the sample data in the PS object 
+metadata.ARGcluster.aggl.multiplybillion.noblanks <- sam_data(ARGcluster.aggl.multiplybillion.noblanks)
+
+# Create boxplots for COPD and control for the different alpha diversity measures
+Shannon.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = shannon)) + 
+  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Shannon diversity") + 
+    theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Shannon diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+Simpson.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
+  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Simpson Evenness diversity") + 
+    theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Simpson Evenness diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+Observed.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = Observed)) + 
+  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  ggtitle("Observed diversity") + 
+    theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
+  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
+  xlab("Study population")+
+  ylab("Observed diversity index")+
+  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+
+
+Shannon.diversity.plot.clustered
+Simpson.diversity.plot.clustered
+Observed.diversity.plot.clustered
+
+```
+### Calculate alpha diversity difference - 90% cluster level
+```{r}
+# Compare alpha diversity of COPD and control with a t-test or Mann-Whitney U test 
+
+# t-tests make the following assumptions: 
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+# 3: The two populations are normally distributed
+
+# Wilcoxon rank sum test makes the following assumptions:
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+
+# Wilcoxon rank sum test (Mann-Whitney U) for Shannon and Simpson Evenness but t-test for Observed diversity
+
+# Wilcoxon rank sum - Shannon
+wilcox.test(metadata.ARGcluster.aggl.multiplybillion.noblanks$shannon~metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+# Wilcoxon rank sum - Simpson evenness
+wilcox.test(metadata.ARGcluster.aggl.multiplybillion.noblanks$SimpsonEvenness~metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+# t-test - Observed diversity
+t.test(metadata.ARGcluster.aggl.multiplybillion.noblanks$Observed~ metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+
+# Add test results to the boxplots
+Shannon.diversity.plot.clustered +  stat_compare_means(method = "wilcox.test", size=11, label.x = 0.6, label.y = 3.5)
+Simpson.diversity.plot.clustered +  stat_compare_means(method = "wilcox.test", size=11, label.x = 0.6, label.y = 0.5)
+Observed.diversity.plot.clustered+  stat_compare_means(method = "t.test", size=11,label.x = 0.6, label.y = 100)
+
+# Check homogeneity of variance assumption with levene's test
+leveneTest(y = metadata.ARGcluster.aggl.multiplybillion.noblanks$shannon, group = metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+leveneTest(y = metadata.ARGcluster.aggl.multiplybillion.noblanks$SimpsonEvenness, group = metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+leveneTest(y = metadata.ARGcluster.aggl.multiplybillion.noblanks$Observed, group = metadata.ARGcluster.aggl.multiplybillion.noblanks$copdcaco)
+# Yes all are non-significant- i.e. all homogeneous 
+```
