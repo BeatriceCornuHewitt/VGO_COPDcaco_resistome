@@ -1,0 +1,501 @@
+- 1: Relative 'rarefy': ARG read count data was first rarefied according to the relative correction factors per sample (phyloseq= merged.rar3)
+- 2: Gene length correction: Rarefied ARG read count data was then corrected for ARG lengths (now FPK) ((read counts*1000)/ARG length)  (phyloseq= merged.rar3.fpk)
+- 3: Bacterial content correction: FPK values were normalised to total bacteria (using qPCR 16-S values for each sample)
+  
+Since rarefaction of data before or after ARG length correction could make a limited/small (tested with artificial set) difference we decided to do it 100% correct and rarefy before ARG length correction.
+# Parameters and folders 
+```{r}
+# Phyloseq object consists of 3 parts (i.e. it is an S4 object linking different spreadsheets (S4 objects are particularly useful for handling complex data structures in bioinformatics, statistics, and other data-intensive fields) – in our case 3 (where otu_table = ARGs in each sample, sample_data = the qPCR 16S metadata, tax_table = categorisations of genes into clusters). 
+
+# set random seed set for reproducibility
+seed <- 2202
+set.seed(seed)
+
+# input for ps object 
+metafile <- "Input_files//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab"
+argclusterfile <- "Input_files//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab"
+argmappingfile <- "Input_files//02e_TotalResfinderMapped_v3.tab"
+```
+# Read in the raw data
+```{r}
+# Data were pre-processed from individual excel sheets (metadata and 'otu data') and the refined ARG clustering spreadsheet (ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b)
+getwd()
+metadata <- read.csv(metafile, header=TRUE, sep="\t", row.names=1 )
+metadata
+
+ARGclusters <- read.csv(argclusterfile, header=TRUE, sep="\t", row.names=1 )
+ARGclusters
+
+ARG.long <- read.csv(argmappingfile, header=TRUE, sep="\t")
+head(ARG.long)
+
+# Make matrix of 'otu_data' 
+# make matrix with samples in rows and ARGs in columns
+ARGcount <- ARG.long %>%
+    select(SampleName, ARGname, MappedCount) %>% 
+    pivot_wider(names_from=ARGname, values_from=MappedCount, values_fill=0)
+ARGcount
+```
+
+# Create PS objects 
+- Convert ARG table to "otu"_table having taxa in columns and move SampleNames to rownames first
+- Taxonomy needs to be matrix type
+- Metadata should be ordered in the same way as the samples in the ps object before merging.
+
+PS object structure:
+The class structure in the phyloseq package uses 4 core data classes: (1) OTU abundance table (otu_table), a table of sample data (sample_data); (2) a table of taxonomic descriptors (taxonomyTable); and (3) a phylogenetic tree ("phylo"-class, ape package (NA in this case). 
+
+otu_table:  represents the number and type of sequences observed in each sample. In our case the otu_table is oriented with taxa as columns (taxa_as_rows= FALSE)
+sample_data: same structure as R’s data.frame, and effectively stores both categorical and numerical data about each sample. Samples are rows, and variables are columns (consistent with vegan and other packages). 
+tax_table: This directly inherits the matrix class, and is oriented such that rows are taxa/OTUs and columns are taxonomic levels (e.g. Phylum).
+
+# Non-normalised PS 
+```{r}
+ARGotutable <- ARGcount %>% column_to_rownames("SampleName")
+
+# Create ps with otu table and tax table
+merged <- phyloseq(otu_table(ARGotutable, taxa_are_rows=FALSE ), tax_table( as.matrix(ARGclusters)))
+
+# somehow the apostrophes get converted from df to matrix. Therefore we import again directly the matrix into the ps object to preserve names.
+merged@otu_table@.Data <- as.matrix(ARGotutable)
+
+# Add the meta data by aligning and merging it
+metadata <- metadata[match(sample_names(merged), rownames(metadata)), ]
+
+# final PS object
+merged@sam_data <- sample_data(metadata)
+
+# make numeric value to factor variable
+merged@sam_data$Enrich_pool_num <- as.factor(merged@sam_data$Enrich_pool_num)
+
+# Save ps object 
+saveRDS(merged, "Output_files//Phyloseq_objects//1_COPD_resistome_phyloseq_object.RDS")
+
+## Save otu table
+otu <- as.data.frame(otu_table(merged)) %>% rownames_to_column( "SampleID" )
+write.csv(otu, paste0(psfile, ".tab" ), row.names=FALSE )
+
+# Basic metrics of PS object
+summary(sample_data(merged))
+```
+
+# Normalise PS for relative volume inputs  
+We need to normalise/correct the relative ratios between samples.
+- Correct for relative volume inputs (using relative rarefaction)
+- Subsequently we need to correct for ARG gene length. (N.B. We tested in a small artificial example that rarefication before or after ARG length correction could make a limited/small difference (tested with artificial set...see R playground using 10 samples), we decided to do it 100% correct and rarefy before ARG length correction.
+- Normalise to bacterial content (16S qPCR data) of each sample.
+
+```{r}
+# Based on the correction factors calculated from the wet-lab data we determined a correction factor by which each sample should be normalised to individually. We therefore calculated what the target read depth should be per sample based on inputs. Use that per-sample value to rarefy each sample individually.  
+# how many samples are there in the phyloseq object?
+nsamples <- length(sample_names(merged))
+
+# determine which number we should rarefy to (from metadata table)
+metasum <- data.frame(sample_data(merged))$RelativeCorrect_readpair_counts
+
+#first do sample 1, then build the rest around it
+i=1
+m.tmp <- subset_samples(merged, sample_names(merged) == sample_names(merged)[i] )
+m.tmp <- rarefy_even_depth(m.tmp, sample.size=metasum[i], trimOTUs=FALSE, rngseed=seed )
+mtotal <- m.tmp
+
+#now add remainder samples one by one after rarefy to same m4.final ps object
+for( i in 2:nsamples) {
+  m.tmp <- subset_samples( merged, sample_names(merged) == sample_names(merged)[i] )
+  m.tmp <- rarefy_even_depth( m.tmp, sample.size=metasum[i], trimOTUs=FALSE, rngseed=seed )
+  mtotal <- merge_phyloseq( mtotal, m.tmp )
+}
+
+merged.rar <- mtotal
+
+# Inspect rarefied data
+merged.rar
+# Compare to non-rarefied data
+rarefy_compare <- data.frame( "OriginalSum"=sample_sums(merged), "RarefiedSum"=sample_sums(merged.rar) )
+rarefy_compare
+
+## Restore taxa_names
+# At some point all apostrophes got removed from the taxa names. We need to restore them, and do this here
+# Note: the functions subset_taxa and subset_samples remove the apostrophes from the taxa names (prune_ functions do not do this)
+# quickly visually check to see that the order of the taxa in the ps object has not changed (the only difference should be apostrophes). 
+taxnames_compare <- data.frame("org"=taxa_names(merged),"altered.rar"=taxa_names(merged.rar))
+taxnames_compare
+
+taxa_names(merged.rar) <- taxa_names(merged)
+taxnames_compare2 <- data.frame("org"=taxa_names(merged),"altered.rar"=taxa_names(merged.rar))
+taxnames_compare2
+
+## Cleanup zero taxa and samples
+# N.B. using the subset_taxa or subset_samples functions removes the apostrophes again from the ps objecect but prune_taxa does not.
+# Filter out taxa (microbial features) in the merged.rar phyloseq object that have zero total counts across all samples. 
+merged.rar2 <- prune_taxa(taxa_sums(merged.rar) > 0, merged.rar) 
+merged.rar2
+# Filter out samples from the merged.rar2 phyloseq object that have zero total counts. The resulting merged.rar3 object contains only samples with non-zero counts for at least one taxa.
+merged.rar3 <- prune_samples(sample_sums(merged.rar2) > 0, merged.rar2)
+merged.rar3
+
+# check if taxa names still contain apostrophes
+head(taxa_names(merged.rar3)) # yes names are correct
+
+# save this ps for later use for DA analysis
+saveRDS(merged.rar3, file = "Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS")
+```
+# Correct PS for ARG gene length
+We will use the ARG gene - gene length values from the initial long ARGmapping file.
+
+- Make a unique list of ARG and corresponding ARG lengths
+- Convert OTU counts matrix to a long format dataframe.
+- Correct the count value by dividing corresponding ARG length.
+- Convert df long into matrix into phyloseq object again.
+
+```{r}
+# unique list of ARG and ARG length (n=369)
+ARGlen <- data.frame("ARGname"=ARG.long$ARGname, "ARGlen"=ARG.long$ARGlength)
+ARGlen <- unique.data.frame(ARGlen)
+rownames(ARGlen) <- NULL 
+ARGlen <- ARGlen %>% column_to_rownames("ARGname")
+ARGlen
+
+## ARG count to FPK
+merged.rar3.fpk <- merged.rar3
+# convert otu counts directly by matrix manipulation in the ps object using ARGlen df.
+merged.rar3.fpk@otu_table@.Data <- merged.rar3.fpk@otu_table@.Data * 1000 / ARGlen[ col(merged.rar3.fpk@otu_table@.Data), ] 
+
+# Check the ps
+merged.rar3.fpk
+head(taxa_names(merged.rar3.fpk))
+head(data.frame(otu_table(merged.rar3.fpk)))
+
+# Save partially normalised data 
+saveRDS(merged.rar3.fpk, "Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS")
+
+# Save otu table
+otu <- as.data.frame(otu_table(merged.rar3.fpk)) %>% rownames_to_column("SampleID")
+write.csv(otu, paste0(psfpkfile, ".tab"), row.names=FALSE)
+
+# Basic metrics of normalised/ARG length-corrected PS 
+summary(sample_data(merged.rar3.fpk))
+```
+# Correct PS for 16S qPCR counts
+```{r}
+# create a list of sample ID and associated 16S qPCR count
+qPCRcounts <- data.frame("SampleID"= unique(ARG.long$SampleName), "qPCR16S"= metadata$qPCR_16S_ngml)
+rownames(qPCRcounts) <- NULL
+qPCRcounts
+qPCRcounts <- qPCRcounts %>% column_to_rownames("SampleID")
+qPCRcounts
+
+saveRDS(qPCRcounts,"Output_files//Phyloseq_objects//qPCRcounts")
+
+merged.rar3.fpkm <- merged.rar3.fpk
+# convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
+merged.rar3.fpkm@otu_table@.Data <- merged.rar3.fpkm@otu_table@.Data / qPCRcounts [ 1:73 ,]
+
+# check PS 
+merged.rar3.fpkm
+head(taxa_names(merged.rar3.fpkm))
+
+# Manual checking of data
+view(merged.rar3.fpkm@otu_table@.Data)
+view(merged.rar3.fpk@otu_table@.Data)
+view(merged.rar3@otu_table@.Data) 
+# Manual checks of the otu table data shows me that this correction has been successful as we can see that each value has been divided by the individual ARG lengths
+
+
+## Remove duplicate sample (13674) from the dataset
+# There was an error in the choice and labelling of 1 control sample and we ended up with the same control sample being used for 2 case samples. It was mislabelled as '13674' hence was thought to be a different sample to '13764' which was already included in the dataset. Therefore we must remoce '13674' from the dataset. 
+Final.ps <- prune_samples(sample_names(merged.rar3.fpkm) != "13674", merged.rar3.fpkm) 
+Final.ps
+# Final PS object therefore now has 72 samples in total (35 cases, 34 controls, 3 blanks)
+
+# Save fully normalised & corrected data
+saveRDS(Final.ps, "Output_files//Phyloseq_objects//4_COPD_resistome_phyloseq_object_rarefied_FPKM.RDS")
+
+# Save otu table
+otu_fpkm <- as.data.frame(otu_table(Final.ps)) %>% rownames_to_column("SampleID")
+write.csv(otu_fpkm, paste0(psfpkmfile, ".tab" ), row.names=FALSE)
+```
+# Agglomerate at 90% ARG cluster level 
+```{r}
+# Using the functions created by Alex Bossers, I will now agglomerate the data to AMRcluster level - i.e. merge ARGs which are in the same ARGcluster (90% identity level)  
+# Clustering of ARGs at the 90% identity level is classified as 'ARGCluster' in the tax data of the Final.ps object - agglomerate at this level i.e. create a new ps object with cluster 90 as default. Automatic default is the ARG level but this may not be very accurate therefore best to use cluster90 level (ARGCluster in ps object). 
+
+# print the available taxonomic ranks
+colnames(tax_table(Final.ps))
+# how many ARGs are there before agglomeration in original ps object? 
+Final.ps # 233 taxa (ARGs)
+
+# Tax_glom2 function as created by AB - save this in the global environment for later use
+tax_glom2 <- function(physeq, taxrank=rank_names(physeq)[1],
+                     NArm=TRUE, bad_empty=c(NA, "", " ", "\t")){
+  #### This part is identical to phyloseq's tax_glom
+  # Error if tax_table slot is empty
+  if( is.null(access(physeq, "tax_table")) ){
+    stop("The tax_glom2() function requires that physeq contain a taxonomyTable")
+  }
+  # Error if bad taxrank
+  if( !taxrank[1] %in% rank_names(physeq) ){
+    stop("Bad taxrank argument. Must be among the values of rank_names(physeq)")
+  }
+  # Make a vector from the taxonomic data.
+  CN  <- which( rank_names(physeq) %in% taxrank[1] )
+  tax <- as(access(physeq, "tax_table"), "matrix")[, CN]
+  # if NArm is TRUE, remove the empty, white-space, NA values from
+  if( NArm ){
+    keep_species <- names(tax)[ !(tax %in% bad_empty) ]
+    physeq <- prune_taxa(keep_species, physeq)
+  }
+  # Concatenate data up to the taxrank column, use this for agglomeration
+  tax <- as(access(physeq, "tax_table"), "matrix")[, 1:CN, drop=FALSE]
+  tax <- apply(tax, 1, function(i){paste(i, sep=";_;", collapse=";_;")})
+  #### **Speedyseq changes start here**
+  ## Make the new OTU table
+  # Work with taxa as rows
+  if (!taxa_are_rows(physeq)) {
+    physeq <- phyloseq::t(physeq)
+    # Note that we need to flip back to samples as rows at the end
+    needs_flip <- TRUE
+  } else {
+    needs_flip <- FALSE
+  }
+  # Starting point is a tibble with rows as taxa, to be able to combine taxa
+  # with the dplyr::summarize_*() functions
+  otu <- otu_table(physeq)
+  tb <- otu %>%
+    as("matrix") %>%
+    tibble::as_tibble(rownames = "OTU")
+  # We want to name each new taxon (group of merged OTUs) by its "archetype",
+  # the most abundant OTU in the group
+  tb <- tb %>%
+    tibble::add_column(Tax = tax, Sum = taxa_sums(physeq)) %>%
+    dplyr::group_by(Tax)
+  # Name new taxa by the most abundant OTU; pick the first OTU in case of
+  # ties (to be consistent with phyloseq)
+  new_taxa_names <- tb %>%
+    dplyr::top_n(1, Sum) %>%
+    dplyr::slice(1) %>%
+    dplyr::select(Tax, OTU)
+  # Sum abundances and rename taxa
+  tb0 <- tb %>%
+    dplyr::summarize_at(dplyr::vars(sample_names(physeq)), sum) %>%
+    dplyr::left_join(new_taxa_names, by = "Tax") %>%
+    dplyr::select(OTU, dplyr::everything(), -Tax)
+  # Put back into phyloseq form
+  mat <- tb0 %>%
+    dplyr::select(-OTU) %>%
+    as("matrix")
+  rownames(mat) <- tb0$OTU
+  otu0 <- otu_table(mat, taxa_are_rows = TRUE)
+  ## Make the new phyloseq object
+  # Replacing the original otu_table with the new, smaller table will
+  # automatically prune the taxonomy, tree, and refseq to the smaller set of
+  # archetypal otus
+  otu_table(physeq) <- otu0
+  # "Empty" the taxonomy values to the right of the rank, using
+  # NA_character_.
+  if (CN < length(rank_names(physeq))) {
+    bad_ranks <- seq(CN + 1, length(rank_names(physeq)))
+    tax_table(physeq)[, bad_ranks] <- NA_character_
+  }
+  ## Return.
+  if (needs_flip) {
+    physeq <- phyloseq::t(physeq)
+  }
+  return(physeq)
+}
+
+
+# Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
+ARGcluster.aggl <- tax_glom2(Final.ps, taxrank=rank_names(Final.ps)[6], NArm=TRUE)
+taxa_names(ARGcluster.aggl)
+# The 'taxa_names' are not the arg cluster names, as the function just chooses one ARG name instead of selecting the cluster name.
+# Check tax-table of ps object - if clustering is done correctly all other levels above 'ARG_cluster' level will be NA. 
+tax_table(ARGcluster.aggl) # Yes this is the case
+
+# How many taxa before/after agglomeration?
+ntaxa(Final.ps); ntaxa(ARGcluster.aggl)
+# 85 ARGClusters vs 233 ARGs 
+ARGcluster.aggl@tax_table[,6]
+head(ARGcluster.aggl@otu_table)
+taxa_names(ARGcluster.aggl)
+
+# Function created by AB to counts the number of NAs in the taxonomy table per taxonomic rank. It returns a dataframe having the NA counts and the percentage NAs of total entries per taxrank.
+countTaxrankNAs <- function(  ps, filename="" )
+{
+  natax   <- colSums(is.na(ps@tax_table))
+  tottax  <- natax + colSums(!is.na(ps@tax_table))
+  perctax <- round( natax/tottax * 100, digits=2 )
+  overall <- data.frame(NtaxaNAs=natax, percNAs=perctax) %>% rownames_to_column("TaxRank")
+  cat( paste0("Total of ARGs = ",tottax[1],"\n"))
+  if( filename > "") { write_tsv(overall, paste0(pjbase,"_TotalNAtaxaAtTaxonomicLevelsOverall.tab")) }
+  return(overall)
+}
+
+countTaxrankNAs(ARGcluster.aggl) # 0 NAs in the ARG and ARG cluster columns
+
+# Remove blanks from agglomerated PS objects
+# Identify blanks and save as a new PS object
+blanks <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
+# Convert 'blancs' to a character vector of sample names
+blank_names <- as.character(sample_names(blanks))
+# Prune samples from 'ARGcluster.aggl'
+ARGcluster.aggl.noblanks <- ARGcluster.aggl
+ARGcluster.aggl.noblanks <- prune_samples(!sample_names(ARGcluster.aggl.noblanks)%in%blank_names, ARGcluster.aggl.noblanks)
+ARGcluster.aggl.noblanks;ARGcluster.aggl # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
+
+# Prune samples from 'AMRclass.aggl'
+AMRclass.aggl.noblanks <- AMRclass.aggl
+AMRclass.aggl.noblanks <- prune_samples(!sample_names(AMRclass.aggl.noblanks)%in%blank_names, AMRclass.aggl.noblanks)
+AMRclass.aggl.noblanks;AMRclass.aggl # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
+
+saveRDS(AMRclass.aggl,"Output_files//Phyloseq_objects//5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
+saveRDS(AMRclass.aggl.noblanks,"Output_files//Phyloseq_objects//6_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered_noblanks.RDS")
+```
+# Check for contaminants in the dataset
+```{r}
+# Using decontam package
+Final.ps 
+
+# take a quick look at the library sizes (i.e. the number of reads) in each sample, as a function of whether that sample was a true positive sample or a negative control:
+df.libsize <- as.data.frame(sample_data(Final.ps)) # Put sample_data into a ggplot-friendly data.frame
+df.libsize$LibrarySize <- sample_sums(Final.ps)
+df.libsize <- df.libsize[order(df.libsize$LibrarySize),]
+df.libsize$Index <- seq(nrow(df.libsize))
+ggplot(data=df.libsize, aes(x=Index, y=LibrarySize, color=copdcaco)) + geom_point()
+
+# Identify Contaminants - Frequency method (as sequences from contaminating ARGs are likely to have a frequency that inversely relates with sample DNA concentration)
+contamdf.freq <- isContaminant(Final.ps, method="frequency", conc = "DNA_ngul_clariostar")
+head(contamdf.freq)
+# This gives us a dataframe with several columns: $p tells us the probability that was used for classifying contaminants, and $contaminant tells us the TRUE/FALSE classification values - TRUE indicating that the statistical evidence that the associated sequence feature is a contaminant exceeds the user-settable threshold. As we did not specify the threshold, the default value of threshold = 0.1 was used, and $contaminant=TRUE if $p < 0.1.
+# How many genes are flagged as contaminants? 
+table(contamdf.freq$contaminant)
+# Just 11 out of 233 ARGs are classified as contaminants
+# Figure out which ARGs are flagged as the contaminants
+which(contamdf.freq$contaminant) # ARG 11,16,25 etc. are classified as contaminants - not very useful not seeing the gene names though...
+# View ARG names of contaminants
+taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant),11)]
+# Now we look at what a clear non-contaminant (e.g. 1st ARG), and a clear contaminant (e.g 11th ARG) look like:
+plot_frequency(Final.ps, taxa_names(Final.ps)[c(1,11)], conc="DNA_ngul_clariostar") + 
+  xlab("DNA_ngul_clariostar (input DNA concentration)")
+# The dashed black line shows the model of a noncontaminant sequence feature for which frequency is expected to be independent of the input DNA concentration. The red line shows the model of a contaminant sequence feature, for which frequency is expected to be inversely proportional to input DNA concentration, as contaminating DNA will make up a larger fraction of the total DNA in samples with very little total DNA. Gene 11 (aph(3')-la_5_AP004237)  fits the red contaminant model better than ARG 1 (aadD_2_M19465). 
+# Inspecting more of the ARGs that were classified as contaminants - to make sure they look like what we expect: 
+set.seed(100)
+plot_frequency(Final.ps,taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant),6)], conc="DNA_ngul_clariostar") +
+    xlab("DNA_ngul_clariostar (input DNA concentration)")
+
+# # Now that these ARGs have been identified as likely contaminants we nee dto remove them from the Final.ps object 
+# Final.ps
+# Final.ps.decontam.freqbased <- prune_taxa(!contamdf.freq$contaminant, Final.ps)
+# Final.ps.decontam.freqbased
+# # Our 'decontaminated' ps object now has 222 taxa instead of 233 as the 11 contaminants have been removed 
+
+# Alex suggested not using DNA input as the "concentration" but instead to use the correction factor. In amplicon sequencing like 16S the DNA concentration is the major influencer. In my case I also have this input but also several other steps in the processing that were not equal for each sample. Could you try using the input DNA amounts but now corrected with the correction factor? 
+# Frequency method - redone with different 'concentration' - using input DNA with correction factor 
+#Create new column with DNA content with correction factor per sample - i.e. DNA_ngul_clariostar * TotalCorrectionMaxed
+corrected.DNAinput <- Final.ps@sam_data$DNA_ngul_clariostar *
+Final.ps@sam_data$TotalCorrectionMaxed
+Final.ps@sam_data$correctedDNAinput <- corrected.DNAinput
+contamdf.freq.DNAcorrfactor <- isContaminant(Final.ps, method="frequency", conc = "correctedDNAinput")
+head(contamdf.freq.DNAcorrfactor)
+table(contamdf.freq.DNAcorrfactor$contaminant)
+# 17 out of 233 ARGs are classified as contaminants
+which(contamdf.freq.DNAcorrfactor$contaminant) 
+which(contamdf.freq$contaminant) 
+
+taxa_names(Final.ps)[sample(which(contamdf.freq.DNAcorrfactor$contaminant))]
+# comparing to previous frequency method used:
+taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant))]
+taxa_names(Final.ps)[c(70,153,219)]
+taxa_names(Final.ps)[sample(which(contamdf.freq.corrfactor$contaminant))];taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant))]
+
+# Now we look at what a clear non-contaminant (e.g. 1st ARG), and a clear contaminant (e.g 11th ARG) look like:
+plot_frequency(Final.ps, taxa_names(Final.ps)[c(1,16)], conc="correctedDNAinput") + 
+  xlab("correctedDNAinput")
+# The dashed black line shows the model of a noncontaminant sequence feature for which frequency is expected to be independent of the input DNA concentration. The red line shows the model of a contaminant sequence feature, for which frequency is expected to be inversely proportional to input DNA concentration, as contaminating DNA will make up a larger fraction of the total DNA in samples with very little total DNA. Gene 16  fits the red contaminant model better than ARG 1 (aadD_2_M19465). 
+# Inspecting more of the ARGs that were classified as contaminants - to make sure they look like what we expect: 
+set.seed(100)
+plot_frequency(Final.ps,taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant),6)], conc="correctedDNAinput") +
+    xlab("correctedDNAinput")
+
+#Using this as concentration instead of DNA input, I get some differences in ARGS and more ARGs are flagged as contaminants. 
+
+# Prevalence-based contaminant identification - since the likelihood of detecting any given contaminant sequence feature will be higher in the blanks than in true samples we can use this method.
+# For each sequence feature, a chi-square statistic on the 2 × 2 presence-absence table in true samples and blanks is computed, and a score statistic P is de- fined as the tail probability of the chi-square distribution at that value. The p value from Fisher’s exact test is used as the score statistic instead if there are too few samples for the chi-square approximation. The score statistic ranges from 0 to 1. Small scores indicate the contaminant model of higher prevalence in blanks is a better fit. 
+#  In this method, the prevalence (presence/absence across samples) of each sequence feature in true samples COPD/control is compared to the prevalence in blanks to identify contaminants.
+# In my phyloseq object, "copdcaco" is the sample variable that holds the COPD/control/blank status. We’ll summarize that data as a logical variable, with TRUE for blank samples, as that is the form required by isContaminant.
+#In the prevalence test there is a special value worth knowing, threshold=0.5, that will identify as contaminants all sequences that are are more prevalent in blanks than in copd/control samples
+Final.ps@sam_data$copdcaco
+sample_data(Final.ps)$is.neg <- sample_data(Final.ps)$copdcaco == "blanc"
+contamdf.prev <- isContaminant(Final.ps, method="prevalence", neg="is.neg")
+table(contamdf.prev$contaminant)
+# This method finds 4 ARGs as contaminants 
+# Figure out which ARGs are flagged as the contaminants
+which(contamdf.prev$contaminant) # ARGs  45,95, 153 & 194 are classified as contaminants - not very useful not seeing the gene names though...
+# View ARG names of contaminants
+taxa_names(Final.ps)[sample(which(contamdf.prev$contaminant))]
+# "tet(A)_1_AJ313332"    "blaCARB-5_1_AF135373" "tet(A)_2_X00006"  "tet(C)_2_AY046276"  are identified as contaminants 
+# Seems strange that no aminoglycoside ARGs are identified as contaminants - mainly tetracycline resistance genes (and 1 beta-lactam)
+# prevalence based contaminant identification has identified fewe number of contaminants than frequency-based method 
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(Final.ps, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$copdcaco == "blanc", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$copdcaco == c(1,0), ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (blanc samples)") + ylab("Prevalence (COPD and control Samples)")
+# This graph shows that the ARGs seem to split pretty cleanly into a branch that shows up mostly in positive samples, and another that shows up mostly in negative controls, and the contaminant assignment (at default probability threshold) has done a good job of identifying those mostly in negative controls.
+
+# Now that these ARGs have been identified as likely contaminants we need to remove them from the Final.ps object 
+Final.ps
+Final.ps.decontam.prevbased <- prune_taxa(!contamdf.prev$contaminant, Final.ps)
+Final.ps.decontam.prevbased
+# Our 'decontaminated' ps object now has 229 taxa instead of 233 as the 4 contaminants have been removed 
+
+# There is also a combined method which which combines the frequency-based and prevalence-based scores into a composite score - this approach has been shown to provide the most robust classifications when both DNA concentration and negative control data are available.
+?isContaminant
+# "Combined" method
+contamdf.comb <- isContaminant(
+  Final.ps,
+  conc = "correctedDNAinput",
+  neg = "is.neg",
+  method = "combined",
+  threshold = 0.1,
+  detailed = TRUE)
+
+# examine numbers of contaminants & non-contaminants 
+table(contamdf.comb$contaminant)
+# Figure out which ARGs are flagged as the contaminants
+which(contamdf.comb$contaminant) # ARGs "25", "38" ...are classified as contaminants 
+# View ARG names of contaminants
+taxa_names(Final.ps)[sample(which(contamdf.comb$contaminant))]
+
+# So in summary, number of ARGs flagged as contaminants by each method are: frequency = 17, prev =4, combined =8. 
+# Strange that the prevalence and combined methods do not flag any aminoglycoside? 
+# Alex says not surprised -see emails fron 15/07/2021: " In my view a real indicator that only in very low to negative samples this contamination got a chance and emerged." Alex suggests:"What we usually do is just flag the potential contaminants. See which relative abundance they present...  If these are for instance borderline to be filtered (very low count or prevalence) a good strategy might be to just raise the filter a bit so they get excluded. Problem solved.Another option is just to let them stay but flagged. Do your analysis and if they come out significant somewhere realise the flag status and discuss what to do. This is only applicable if the abundance is not too high since that will influence all relative abundance..."
+# Next steps: make a plot of the abundances of these genes over samples/groups just to get an idea of where these taxa are. Do for both FPKM as well as relative abundances…
+
+# Plot of abundances of these 8 genes over COPD, control and blank samples
+# "tet(C)_2_AY046276"     "sul1_2_U12338"         "blaOXA-134_1_HQ122933" "tet(A)_1_AJ313332"     "aac(3)-IId_1_EU022314" "blaOXA-60d_1_AY664506" "blaZ_138_CP003979"     "tet(A)_6_AF534183" were identified as contaminants 
+Final.ps@otu_table@.Data$aadD_2_M19465
+is.recursive(Final.ps@otu_table@.Data)
+is.atomic(Final.ps@otu_table@.Data)
+par(mfrow = c(4, 4))
+# plot for blaOXA-134_1_HQ122933 (gene #25)
+boxplot(Final.ps@otu_table@.Data[,25]~Final.ps@sam_data$copdcaco)
+# aac(3)-IId_1_EU022314
+boxplot(Final.ps@otu_table@.Data[,38]~Final.ps@sam_data$copdcaco)
+# blaOXA-60d_1_AY664506
+boxplot(Final.ps@otu_table@.Data[,45]~Final.ps@sam_data$copdcaco)
+#tet(A)_1_AJ313332
+boxplot(Final.ps@otu_table@.Data[,95]~Final.ps@sam_data$copdcaco)
+#sul1_2_U12338
+boxplot(Final.ps@otu_table@.Data[,123]~Final.ps@sam_data$copdcaco)
+# tet(C)_2_AY046276
+boxplot(Final.ps@otu_table@.Data[,135]~Final.ps@sam_data$copdcaco)
+# tet(A)_6_AF534183
+boxplot(Final.ps@otu_table@.Data[,146]~Final.ps@sam_data$copdcaco)
+#blaZ_138_CP003979
+boxplot(Final.ps@otu_table@.Data[,171]~Final.ps@sam_data$copdcaco)
+```
