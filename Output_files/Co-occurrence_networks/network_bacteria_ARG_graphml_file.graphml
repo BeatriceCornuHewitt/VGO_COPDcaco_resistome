@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <graph id="G" edgedefault="undirected">
+    <node id="n0">
+      <data key="v_name">aac(3)-II_clust</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">blaCTX-M_clust1</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">blaOXA-22</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">blaOXA-395_clust</data>
+    </node>
+    <node id="n4">
+      <data key="v_name">cat_2</data>
+    </node>
+    <node id="n5">
+      <data key="v_name">catA1</data>
+    </node>
+    <node id="n6">
+      <data key="v_name">catS</data>
+    </node>
+    <node id="n7">
+      <data key="v_name">cfr(C)</data>
+    </node>
+    <node id="n8">
+      <data key="v_name">tet(37)</data>
+    </node>
+    <node id="n9">
+      <data key="v_name">Faucicola</data>
+    </node>
+    <node id="n10">
+      <data key="v_name">Parascardovia</data>
+    </node>
+    <node id="n11">
+      <data key="v_name">Streptobacillus</data>
+    </node>
+    <node id="n12">
+      <data key="v_name">Alysiella</data>
+    </node>
+    <node id="n13">
+      <data key="v_name">Olsenella</data>
+    </node>
+    <node id="n14">
+      <data key="v_name">Shuttleworthia</data>
+    </node>
+    <node id="n15">
+      <data key="v_name">Cardiobacterium</data>
+    </node>
+    <node id="n16">
+      <data key="v_name">Gemella</data>
+    </node>
+    <edge source="n0" target="n9">
+    </edge>
+    <edge source="n1" target="n10">
+    </edge>
+    <edge source="n2" target="n11">
+    </edge>
+    <edge source="n2" target="n12">
+    </edge>
+    <edge source="n3" target="n13">
+    </edge>
+    <edge source="n4" target="n14">
+    </edge>
+    <edge source="n5" target="n15">
+    </edge>
+    <edge source="n6" target="n11">
+    </edge>
+    <edge source="n6" target="n12">
+    </edge>
+    <edge source="n7" target="n9">
+    </edge>
+    <edge source="n8" target="n16">
+    </edge>
+  </graph>
+</graphml>
