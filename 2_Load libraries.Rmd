@@ -41,6 +41,8 @@ BiocManager::install("DESeq2")
 library(DESeq2) #For DESeq differntial abundance analyses
 BiocManager::install("microbiome")
 library(microbiome)
+BiocManager::install("mia")
+library(mia)
 library(matrixStats) # needed for DESeq2 package 
 library(e1071) # For support vector machine
 library(microbiomeutilities) # For heatmap building
