@@ -77,7 +77,7 @@ colnames(Final.ps.DAanalysis.filtered.noblanks@otu_table) <- c("aph(3'')-Ib","ap
 # Using WvK method - with phyloseq_to_deseq2 function
 phyloseq_to_deseq2_obj_unfiltered <- phyloseq_to_deseq2(Final.ps.DAanalysis.clusternames.noblanks,~copdcaco)
 
-# RUN  DESeq function 
+# RUN DESeq function 
 phyloseq_to_deseq2_obj_unfiltered <- DESeq(phyloseq_to_deseq2_obj_unfiltered)
 deseq2_results_unfiltered <- results(phyloseq_to_deseq2_obj_unfiltered)
 deseq2_results_unfiltered
@@ -328,3 +328,105 @@ which(ALDEx2.filtered.COPDcontrol.ttest$wi.eBH < 0.1)
 # Estimate effect size and the within and between condition values in the case of two conditions
 ALDEx2.filtered.COPDcontrol.effect <- aldex.effect(ALDEx2.filtered.COPDcontrol.clr, CI=T, verbose=FALSE)
 ```
+
+# ANCOM-BC2 - filtered data
+```{r}
+# Subset the tax_table to "ARGCluster"
+argcluster_tax <- tax_table(Final.ps.DAanalysis.filtered.noblanks)[, "ARGCluster"]
+rownames(argcluster_tax) <- argcluster_tax[, "ARGCluster"]
+
+# Create a new phyloseq object
+Final.ps.DAanalysis.filtered.noblanks_argclust <- phyloseq(
+  otu_table(Final.ps.DAanalysis.filtered.noblanks),
+  sample_data(Final.ps.DAanalysis.filtered.noblanks),
+  tax_table = argcluster_tax
+)
+
+# Run ANCOMBC2 analysis
+out = ancombc2(
+  data = Final.ps.DAanalysis.filtered.noblanks_argclust, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "copdcaco",
+  group = "copdcaco", 
+  struc_zero = TRUE, 
+  neg_lb = TRUE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+saveRDS(out, "Output_files//Differential_abundance//ANCOMBC2_output.rds")
+
+# Differential abundance test 
+ANCOMBC2.results <- out$res
+ANCOMBC2.results$diff_copdcaco1
+any(ANCOMBC2.results$diff_copdcaco1 == "TRUE")
+
+saveRDS(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_results_table.rds")
+# N.B copdcaco = 0 (control) is used as the reference group in my case
+# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in microbial abundance between the reference group (Intercept) and the group defined by the variable copdcaco1. A positive LFC indicates an increase in abundance, while a negative LFC indicates a decrease.
+# se_(Intercept) and se_copdcaco1: These represent the standard errors associated with the log-fold changes for the reference group and the copdcaco1 group, respectively. The standard error provides a measure of the uncertainty associated with the LFC estimate.
+# W_(Intercept) and W_copdcaco1: These values correspond to the Wilcoxon rank-sum test statistics for the reference group and the copdcaco1 group. These statistics are used to assess the significance of differences in microbial abundance between the groups.
+# p_(Intercept) and p_copdcaco1: These represent the p-values associated with the Wilcoxon rank-sum tests for the reference group and the copdcaco1 group. A small p-value indicates that there is evidence to reject the null hypothesis, suggesting significant differences in abundance between the groups.
+# q_(Intercept) and q_copdcaco1: These values may represent adjusted p-values, often corrected for multiple comparisons. Adjusted p-values take into account the issue of conducting multiple statistical tests and help control the family-wise error rate.
+# diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
+
+# None come out as significant. 
+
+```
+
+
+
+
+
+# Comparing absolute abundances - Wilcoxon rank sum test 
+```{r}
+# Extract the normalized count data from your phyloseq object
+resistome_counts <- otu_table(Final.ps.DAanalysis.filtered.noblanks)
+
+# Extract the sample data to identify COPD cases and controls
+sample_data <- sample_data(Final.ps.DAanalysis.filtered.noblanks)
+
+# Create an empty data frame to store the test results
+results <- data.frame(Gene = character(0), TestUsed = character(0), p_value = numeric(0))
+
+# Set the significance level for the Shapiro-Wilk test
+alpha_shapiro = 0.05
+
+# Loop through each resistance gene
+for (gene in colnames(resistome_counts)) {
+  # Extract the absolute abundance data for the current gene
+  gene_data <- resistome_counts[, gene]
+  
+  # Combine the data for COPD cases and controls
+  combined_data <- c(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+  
+  # Perform the Shapiro-Wilk test
+  shapiro_test <- shapiro.test(combined_data)
+  
+  # Check the Shapiro-Wilk test p-value
+  if (shapiro_test$p.value < alpha_shapiro) {
+    # Use Wilcoxon rank-sum test if Shapiro-Wilk test is significant
+    test_result <- wilcox.test(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+    test_used <- "Wilcoxon"} else 
+      {
+    # Use t-test if Shapiro-Wilk test is not significant
+    test_result <- t.test(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+    test_used <- "t-test"}
+  
+  # Store the test result in the results data frame
+  results <- rbind(results, data.frame(Gene = gene, TestUsed = test_used, p_value = test_result$p.value))
+}
+
+# Correct for multiple testing using the Benjamini-Hochberg (FDR) method
+results$padj <- p.adjust(results$p_value, method = "fdr")
+significant_genes <- results$Gene[results$padj < 0.05] # 0 genes are significantly different when corrected for multiple testing.
+
+# View the results (sorted by adjusted p-value)
+pvals_gene_COPDvscontrol <- results[order(results$padj), ]
+
+```
+
