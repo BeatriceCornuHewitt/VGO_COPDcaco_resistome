@@ -1,7 +1,7 @@
 # Differential abundance analysis 
 # Preparing PS object for DA analysis - unfiltered 
 ```{r}
-# Since the DESeq2 function requires count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
+# Since the DA analyses require count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
 
 PS_rarefied <- readRDS("Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS") 
 # convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
@@ -71,6 +71,64 @@ taxa_names(Final.ps.DAanalysis.filtered.noblanks)
 
 colnames(Final.ps.DAanalysis.filtered.noblanks@otu_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
 ```
+# Heatmap
+```{r}
+# Create a heatmap now on the cluster 90 level as this is a better representation of the data 
+# Extract abundance matrix from cluster 90 agglomerated ps object
+ARGclustertable.filtered <- as(otu_table(Final.ps.DAanalysis.filtered.noblanks), "matrix")
+# transform into a data frame
+ARGcluster.filtered.dataframe <- as.data.frame(ARGclustertable.filtered)
+ARGcluster.filtered.dataframe
+# Examine actual cluster 90 names and names assigned in the ps object
+Final.ps.DAanalysis.filtered.noblanks@tax_table[,6]
+
+# column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
+colnames(ARGcluster.filtered.dataframe) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+
+# Check the renaming has been performed correctly
+colnames(ARGcluster.filtered.dataframe)
+
+# transform the raw counts of reads to proportions of total ARG clusters in each sample 
+ARGcluster.filtered.dataframe.prop <- ARGcluster.filtered.dataframe/rowSums(ARGcluster.filtered.dataframe)
+# Examine the dataframe 
+ARGcluster.filtered.dataframe.prop
+
+# calculate the Bray-Curtis dissimilarity matrix on the full dataset
+ARGCluster.filtered.BCdist <- vegdist(ARGcluster.filtered.dataframe.prop, method = "bray")
+
+# perform hierarchical cluster analysis using the BC dissimilarities 
+# each sample is assigned to its own cluster and then the algorithm proceeds iteratively, at each stage joining the two most similar clusters, continuing until there is just a single cluster.
+ARGCluster.hierarchicalclust <- hclust(ARGCluster.filtered.BCdist, "aver")
+
+# Create a heatmap at the ARG cluster level
+COPDcontrolblank <- Final.ps.DAanalysis.filtered.noblanks@sam_data$copdcaco 
+COPDcontrolblank<- replace(COPDcontrolblank, which(COPDcontrolblank == "0"), "blue")
+COPDcontrolblank<-replace(COPDcontrolblank, which(COPDcontrolblank == "1"), "red")
+COPDcontrolblank # check that colours are allocated to the groups
+
+heatmap.ARGClusterlevel <- heatmap(
+  as.matrix(ARGcluster.filtered.dataframe.prop),
+  Rowv = as.dendrogram(ARGCluster.hierarchicalclust),
+  RowSideColors = COPDcontrolblank,
+  margins = c(11, 5),
+  xlab = "ARGCluster",
+  ylab = "SampleIDs",
+  main = "Hierarchical clustering heatmap at 90% ARG cluster level",
+  las = 2,  # Set label orientation to horizontal
+  cexRow = 0.8,
+  cexCol = 0.5# Adjust the font size of the row labels
+)
+# Note that the samples are not in the same order as that in the matrix - heatmap() reorders both variables and observations using the BC clustering algorithm: it computes the distance between each pair of rows and columns and try to order them by similarity.
+
+
+phyl_otu = as(otu_table(Final.ps.DAanalysis.filtered.noblanks),"matrix") %>% as.data.frame()   # check otu file
+phyl_tax = as(tax_table(Final.ps.DAanalysis.filtered.noblanks),"matrix") %>% as.data.frame()   # check tax file 
+phyl_met = as(sample_data(Final.ps.DAanalysis.filtered.noblanks),"matrix") %>% as.data.frame() # check map file
+
+
+```
+
+
 # DESeq2 analysis
 ## DESeq2 on unfiltered data
 ```{r}
@@ -148,10 +206,16 @@ with(subset(res_method2, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=2
 ```
 ### DESeq2 (filtered - 0.1% relative abundance, 15% prevalent) 
 ```{r}
-
 # Now run DESeq analysis again with this newly filtered data on COPD status 
-ARGcluster.aggl.DESeq2.filtered.relative@sam_data$copdcaco
-deseq2.copd.filt <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.filtered.relative,~ copdcaco)
+Final.ps.DAanalysis.filtered.noblanks@sam_data$copdcaco
+# Convert copdcaco column to factor variable (from character)
+Final.ps.DAanalysis.filtered.noblanks@sam_data$copdcaco <- as.factor(Final.ps.DAanalysis.filtered.noblanks@sam_data$copdcaco)
+
+deseq2.copd.filt <- phyloseq_to_deseq2(Final.ps.DAanalysis.filtered.noblanks, ~copdcaco)
+head(deseq2.copd.filt)
+
+# N.B when we use phyloseq_to_deseq2, it converts all counts into integers, therefore for some ARGs whihc only have counts < 0.1, these all become zero, and therefore BaseMean = 0 and log2 fold changes are NA - there 
+
 # RUN  DESeq function 
 deseq2.copd.filt <- DESeq(deseq2.copd.filt, parallel = FALSE)
 deseq2.copd.results.filt <- results(deseq2.copd.filt)
@@ -166,23 +230,39 @@ deseq2.copd.results.filt.ordered <- deseq2.copd.results.filt[order(deseq2.copd.r
 deseq2.copd.results.filt.ordered 
 sum(deseq2.copd.results.filt.ordered$padj < 0.05, na.rm=TRUE) # I now find 1 ARG cluster which has a p-value of <0.1
 
+# Produce horizontal bar plots 
+data_DESEq2 <- data.frame(
+  ARGCluster = rownames(deseq2.copd.results.filt),
+  LogFoldChange = deseq2.copd.results.filt$log2FoldChange,
+  StandardError = deseq2.copd.results.filt$lfcSE,
+  AdjustedPval = deseq2.copd.results.filt$padj
+)
+
+# Filter out rows with NA LogFoldChange - some of these are NA because DESeq can only deal with integers, so any ARGs that have abundances < 1 have an overall BaseMean of 0 and therefore do not have a corresponding log2 fold change
+data_DESEq2 <- data_DESEq2[complete.cases(data_DESEq2), ]
+
+# Determine the fill color based on the sign of LogFoldChange
+data_DESEq2$FillColor <- ifelse(data_DESEq2$LogFoldChange > 0, "darkorange", "cornflowerblue")
+data_DESEq2$ARGCluster <- reorder(data_DESEq2$ARGCluster, data_DESEq2$LogFoldChange)
+
+# Create the horizontal bar plot - with p values (not adjusted)
+DESeq2_barplot <- ggplot(data_DESEq2, aes(y = ARGCluster, x = LogFoldChange, fill = FillColor)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbarh(aes(xmin = LogFoldChange - StandardError, xmax = LogFoldChange + StandardError), height = 0.2) +
+  scale_fill_identity() +  # Set fill color to FillColor
+  labs(y = "ARG Cluster", x = "Log2 Fold Change") +
+  theme_minimal() + # You can customize the theme as needed
+  theme(
+    panel.background = element_rect(fill = "white"),  # Set the background to white
+    plot.background = element_rect(fill = "white")     # Set the plot area background to white
+  )
+
+# Show the plot
+print(DESeq2_barplot)
+ggsave("Output_files//Differential_abundance//horizontal_DESeq2_bar_plot.png", plot = DESeq2_barplot, width = 8, height = 10, units = "in", dpi = 1000)
+
 
 # # create plot - from mol epi course - see DADA2 practical
-# theme_set(theme_bw())
-# sigtabgen = subset(sigtab, !is.na(Genus))
-# # Family order
-# x = tapply(sigtabgen$log2FoldChange, sigtabgen$Family, function(x) max(x))
-# x = sort(x, TRUE)
-# sigtabgen$Family = factor(as.character(sigtabgen$Family), levels=names(x))
-# # Genus order
-# x = tapply(sigtabgen$log2FoldChange, sigtabgen$Genus, function(x) max(x))
-# x = sort(x, TRUE)
-# sigtabgen$Genus = factor(as.character(sigtabgen$Genus), levels=names(x))
-# ggplot(sigtabgen, aes(y=Genus, x=log2FoldChange, color=Family)) + 
-#   geom_vline(xintercept = 0.0, color = "gray", size = 0.5) +
-#   geom_point(size=6) + 
-#   theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5))
-
 # Plot to show the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. Points will be colored red if the adjusted p value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
 plotMA(deseq2.copd.results.filt.ordered, ylim=c(-2,2))
 
@@ -351,7 +431,7 @@ out = ancombc2(
   fix_formula = "copdcaco",
   group = "copdcaco", 
   struc_zero = TRUE, 
-  neg_lb = TRUE, 
+  neg_lb = FALSE, 
   alpha = 0.05, 
   global = TRUE,
   n_cl =1, 
@@ -363,11 +443,20 @@ saveRDS(out, "Output_files//Differential_abundance//ANCOMBC2_output.rds")
 # Differential abundance test 
 ANCOMBC2.results <- out$res
 ANCOMBC2.results$diff_copdcaco1
+ANCOMBC2.results$p_copdcaco1
+ANCOMBC2.results$q_copdcaco1
 any(ANCOMBC2.results$diff_copdcaco1 == "TRUE")
 
 saveRDS(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_results_table.rds")
+write.xlsx(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_results_table.xlsx")
+
+# Check for structural zeroes
+tab_zero = out$zero_ind
+tab_zero %>%
+    data.table(caption = "The detection of structural zeros")
+
 # N.B copdcaco = 0 (control) is used as the reference group in my case
-# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in microbial abundance between the reference group (Intercept) and the group defined by the variable copdcaco1. A positive LFC indicates an increase in abundance, while a negative LFC indicates a decrease.
+# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in microbial abundance. lfc_(Intercept): This column represents the LFC for each taxon or feature between the reference group (Intercept) and itself. In other words, it shows the estimated change in abundance or expression of each taxon within the reference group. The LFC_(Intercept) values indicate how much the abundance or expression of each taxon varies within the reference group. fc_copdcaco1: This column represents the LFC for each taxon or feature between the reference group (Intercept) and the "copdcaco1" group. It shows the estimated change in abundance or expression of each taxon when comparing the reference group to the "copdcaco1" group. A positive LFC indicates an increase in abundance or expression in the "copdcaco1" group compared to the reference group, while a negative LFC suggests a decrease. The magnitude of the LFC_(copdcaco1) values provides information about the size of the difference between these two groups.
 # se_(Intercept) and se_copdcaco1: These represent the standard errors associated with the log-fold changes for the reference group and the copdcaco1 group, respectively. The standard error provides a measure of the uncertainty associated with the LFC estimate.
 # W_(Intercept) and W_copdcaco1: These values correspond to the Wilcoxon rank-sum test statistics for the reference group and the copdcaco1 group. These statistics are used to assess the significance of differences in microbial abundance between the groups.
 # p_(Intercept) and p_copdcaco1: These represent the p-values associated with the Wilcoxon rank-sum tests for the reference group and the copdcaco1 group. A small p-value indicates that there is evidence to reject the null hypothesis, suggesting significant differences in abundance between the groups.
@@ -375,6 +464,39 @@ saveRDS(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_result
 # diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
 
 # None come out as significant. 
+
+# Produce horizontal bar plots 
+# Create a data frame with the relevant columns from ANCOMBC2.results
+
+data_ANCOMBC2 <- data.frame(
+  ARGCluster = rownames(tax_table(Final.ps.DAanalysis.filtered.noblanks_argclust)),
+  LogFoldChange = ANCOMBC2.results$lfc_copdcaco1,
+  StandardError = ANCOMBC2.results$se_copdcaco1,
+  AdjustedPval = ANCOMBC2.results$q_copdcaco1
+)
+
+# Determine the fill color based on the sign of LogFoldChange
+data_ANCOMBC2$FillColor <- ifelse(data_ANCOMBC2$LogFoldChange > 0, "darkorange", "cornflowerblue")
+data_ANCOMBC2$ARGCluster <- reorder(data_ANCOMBC2$ARGCluster, data_ANCOMBC2$LogFoldChange)
+
+# Create the horizontal bar plot - with p values (not adjusted)
+ANCOMBC2_barplot <- ggplot(data, aes(y = ARGCluster, x = LogFoldChange, fill = FillColor)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbarh(aes(xmin = LogFoldChange - StandardError, xmax = LogFoldChange + StandardError), height = 0.2) +
+  scale_fill_identity() +  # Set fill color to FillColor
+  labs(y = "ARG Cluster", x = "Log Fold Change") +
+  theme_minimal() + # You can customize the theme as needed
+  theme(
+    panel.background = element_rect(fill = "white"),  # Set the background to white
+    plot.background = element_rect(fill = "white")     # Set the plot area background to white
+  ) 
+
+
+# Show the plot
+print(ANCOMBC2_barplot)
+
+ggsave("Output_files//Differential_abundance//horizontal_ANCOMBC2_bar_plot.png", plot = ANCOMBC2_barplot, width = 8, height = 10, units = "in", dpi = 1000)
+
 
 ```
 
