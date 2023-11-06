@@ -7,6 +7,7 @@ library(tidyverse) # For organising data in structure suitable for analysis
 library(BiocManager) 
 library(writexl) 
 library(openxlsx)
+library(textshape)
 library(patchwork)
 library(phyloseq) # For microbiome analyses
 library(vegan) # tools for microbiome analyses 
