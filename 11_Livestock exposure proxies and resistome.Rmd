@@ -1,5 +1,5 @@
-## Livestock related exposures and the resistome
-### Alpha diversity 
+# Livestock related exposures and the resistome 
+# Create phyloseq with exposure variables
 ```{r}
 blancs <- c("veldbl16", "veldbl3", "veldbl5")
 Final.ps.noblanks <- Final.ps
@@ -12,7 +12,7 @@ Final.ps.noblanks
 Final.ps.noblanks@sam_data
 
 # Read in the exposure data from MdR
-livestock.exp.df <- read.csv("VGOcopdcaco_resistome_Livestpred_forBea.csv", header=TRUE, row.names='respnr')
+livestock.exp.df <- read.csv("Input_files//VGOcopdcaco_resistome_Livestpred_forBea_copdstatus.csv", header=TRUE, row.names='respnr')
 # Remove the randomly added column 'X' from the dataframe 
 livestock.exp.df <- subset (livestock.exp.df, select = -X)
 # Remove blanks from the dataframe 
@@ -26,7 +26,9 @@ sample_data(Final.ps.noblanks.exp)
 sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
 sample_data(Final.ps.noblanks.exp) <- sam.data.new
 Final.ps.noblanks.exp@sam_data
-
+```
+# Alpha diversity 
+```{r}
 # Alpha diversity - MULTIPLY BY BILLION METHOD
 # The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. Observing the data I see that there are a maximum of 7 decimals in the dataset.
 # Alpha diversity calculations require whole numbers...
@@ -799,7 +801,7 @@ ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half + stat_ellipse()
 
 # No clear clustering even when dispersion modelled PM10 or endotoxin are just stratified into halves (high and low exposure)...no effect of dispersion modelled PM10 or endotoxin on resistome composition. 
 ```
-## Comparing beta diversity - exposure effects 
+# Beta diversity  
 ```{r}
 # There are two tests that are widely used in beta diversity analyses: betadisper and adonis. 
 # Betadisper tests whether two or more groups are homogeneously dispersed in relation to their species in studied samples (it is a multivariate analogue of Levene's test for homogeneity of variances). This test can be done to see if one group has more compositional variance than another. Moreover, homogeneity of dispersion among groups is very advisable to have if you want to test if two or more groups have different compositions, which is tested by adonis. So firstly I will perform betadisper: then move onto adonis
@@ -1151,7 +1153,7 @@ adonis.DISP_PM10CONC_AnnualAv_WP99.5.copd$R2
 
 
 ```
-#### Multivariable PERMANOVA 
+## Multivariable PERMANOVA 
 ```{r}
 #' Multiple Permanovas
 #'
@@ -1330,7 +1332,7 @@ permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="bray",vars="copdcaco", p
 ARGcluster.aggl.noblanks.exp@sam_data$MinDistAnyFarm.NEG
 debug(permanovas_formula)
 ```
-#### Bivariable PERMANOVA 
+## Bivariable PERMANOVA 
 ```{r}
 #' Multiple Permanovas
 #'
@@ -1500,16 +1502,14 @@ undebug(permanovas_formula2)
 
 ```
 
-### DA analysis
-#### Preparing PS object for DA analysis - unfiltered  
+# DA analysis
+## Preparing PS object for DA analysis - unfiltered  
 ```{r}
 # Since the DA analyses require count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
-
 PS_rarefied <- readRDS("Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS") 
 # convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
 PS_rarefied.16Scorrected <- PS_rarefied
 PS_rarefied.16Scorrected@otu_table@.Data <- PS_rarefied.16Scorrected@otu_table@.Data / qPCRcounts[1:73, ]
-
 # check PS 
 PS_rarefied.16Scorrected
 head(taxa_names(PS_rarefied.16Scorrected))
@@ -1518,77 +1518,58 @@ head(taxa_names(PS_rarefied.16Scorrected))
 Final.ps.DAanalysis.unclustered <- prune_samples(sample_names(PS_rarefied.16Scorrected) != "13674", PS_rarefied.16Scorrected) 
 # Final PS object therefore now has 72 samples in total (35 cases, 34 controls, 3 blanks)
 
+# Now add livestock exposure metadata - sam.data.new created as above
+Final.ps.DAanalysis.unclustered.exp <- Final.ps.DAanalysis.unclustered
+sample_data(Final.ps.DAanalysis.unclustered.exp) <- sam.data.new
+
 # This is the ps object to be used for DA analysis (not gene length corrected but corrected for input volumes and qPCR bacterial counts). 
 # Now need to cluster at the 90% identity level 
 
 # Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
-Final.ps.DAanalysis <- tax_glom2(Final.ps.DAanalysis.unclustered, taxrank=rank_names(Final.ps.DAanalysis.unclustered)[6], NArm=TRUE)
-taxa_names(Final.ps.DAanalysis)
-# Taxa names are not correct
-tax_table(Final.ps.DAanalysis)
-taxa_names(Final.ps.DAanalysis)
-otu_table(Final.ps.DAanalysis)
+Final.ps.DAanalysis.exp <- tax_glom2(Final.ps.DAanalysis.unclustered.exp, taxrank=rank_names(Final.ps.DAanalysis.unclustered.exp)[6], NArm=TRUE)
 
-# Save normalised & 16S qPCR-corrected PS object ready for DA analysis input
-saveRDS(Final.ps.DAanalysis, "Output_files//Phyloseq_objects//7_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected.RDS")
+# ARG cluster names are not correct
+tax_table(Final.ps.DAanalysis.exp)
+taxa_names(Final.ps.DAanalysis.exp)
+otu_table(Final.ps.DAanalysis.exp)
 
-# Rename ARGs to their cluster name
-Final.ps.DAanalysis.clusternames <- Final.ps.DAanalysis
-colnames(Final.ps.DAanalysis.clusternames@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
-
-saveRDS(Final.ps.DAanalysis.clusternames, "Output_files//Phyloseq_objects//8_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected_clusternames.RDS")
-
-# Remove blanks from PS object 
-blanks <- subset_samples(Final.ps.DAanalysis.clusternames@sam_data, copdcaco == "blanc")
-# Convert 'blanks' to a character vector of sample names
-blank_names <- as.character(sample_names(blanks))
-# Prune samples from 'ARGcluster.aggl'
-Final.ps.DAanalysis.clusternames.noblanks <- Final.ps.DAanalysis.clusternames
-Final.ps.DAanalysis.clusternames.noblanks <- prune_samples(!sample_names(Final.ps.DAanalysis.clusternames.noblanks)%in%blank_names, Final.ps.DAanalysis.clusternames.noblanks)
-Final.ps.DAanalysis.clusternames.noblanks
-```
-
-#### Preparing PS object for DA analysis - filtered
-```{r}
+# Rename ARG clusters to their cluster name
+Final.ps.DAanalysis.exp.clusternames <- Final.ps.DAanalysis.exp
+colnames(Final.ps.DAanalysis.exp.clusternames@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
 
 ```
-
-
-
-#### DESeq2 (unfiltered data)
+# Preparing PS object for DA analysis - filtered 
 ```{r}
-# Since the DESeq2 function requires count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
-Countdata.DESeq2 # This is the ps object to be used for DESeq2 analysis (not gene length corrected but corrected for input volumes and qPCR bacterial counts). BUT this is not at the 90% cluster level so I should agglomerate this ps object (using previously created tax_glom2 function from AB - see below too)
+# Copy over ps object to be used
+Final.ps.DAanalysis.exp.filtered <- Final.ps.DAanalysis.exp
 
-# Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
-ARGcluster.aggl.DESeq2 <- tax_glom2(Countdata.DESeq2, taxrank=rank_names(Countdata.DESeq2)[6], NArm=TRUE)
-taxa_names(ARGcluster.aggl.DESeq2)
-# Confused why the 'taxa_names' are not the arg cluster names? AB responded saying: "What you see is perfectly normal. If you checkout the tax_table you will see that the lowest level is cluster. The lower ranks should be NA. That is why you use explaining Ps object names to realise some aggregation happened. The data is underneath still linked on indiv accno level but incomplete. Only one per arg cluster should be present.  If you now directly ask the taxon name it is indeed "wrong" the accession name. Just use the arg cluster name corresponding to it and you should be fine. Most functions suited for Ps object allow to mention the tax rank or the fill rank to use. They handle it for you underneath in the same way.No worries, just check above and if that matches. Just continue and be sure to use the name of the tax rank. 
-# Check tax-table of ps object
-tax_table(ARGcluster.aggl.DESeq2)
+# Create prevalence-abundance filter
+# 0.1% abundant, 15% prevalent:  
+pres_abund_filter_DAanalysis <- function(Final.ps.DAanalysis.exp.filtered, pres=10.35, abund=0.001) { # Subramanian filter, keep taxa that are more than 0.1% (proportion = 0.001) abundant in more than 15% of samples (15% of 69= 10.35)
+filter_taxa(Final.ps.DAanalysis.exp.filtered, function(x) sum(x >= abund)>=pres, TRUE) }
+# apply filter
+Final.ps.DAanalysis.exp.filtered <- transform_sample_counts(Final.ps.DAanalysis.exp.filtered, function(x) x/sum(x) *100 ) %>% pres_abund_filter_DAanalysis()
+# Now there are 30 taxa (instead of 85)
 
-# Add new sample data (with exposure proxies) to the new ps object 
-ARGcluster.aggl.DESeq2.exp <- ARGcluster.aggl.DESeq2
-sample_data(ARGcluster.aggl.DESeq2.exp)
-sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
-sample_data(ARGcluster.aggl.DESeq2.exp) <- sam.data.new
-ARGcluster.aggl.DESeq2.exp@sam_data
-
-# I will start with continuous exposure covariates in the DESeq2 analysis as a constant fold change is possible for each unit of increase of the variables 
-# column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
-colnames(ARGcluster.aggl.DESeq2.exp@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
-
-#Inspect the new ps object
-ARGcluster.aggl.DESeq2.exp
-ARGcluster.aggl.DESeq2.exp@otu_table # clusters labelled correctly 
-ARGcluster.aggl.DESeq2.exp@sam_data # exposure proxy sample data added 
-ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
-str(ARGcluster.aggl.DESeq2.exp)
+# Now rename to actual cluster names
+taxa_names(Final.ps.DAanalysis.exp.filtered)
+Final.ps.DAanalysis.exp.filtered.clusternames <- Final.ps.DAanalysis.exp.filtered
+colnames(Final.ps.DAanalysis.exp.filtered.clusternames@otu_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+```
+## DESeq2
+### DESeq2 on unfiltered data
+```{r}
+# Inspect the unfiltered ps object
+Final.ps.DAanalysis.exp.clusternames
+Final.ps.DAanalysis.exp.clusternames@otu_table # clusters labelled correctly 
+Final.ps.DAanalysis.exp.clusternames@sam_data # exposure proxy sample data added 
+Final.ps.DAanalysis.exp.clusternames@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
+str(Final.ps.DAanalysis.exp.clusternames)
 
 # Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
 # Start with assessing endotoxin concentration effects
 # Convert phyloseq data to DESeq2 dataset object
-deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~DISP_EUinPM10_AnnualAv_WP99.5)
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~DISP_EUinPM10_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
@@ -1650,7 +1631,7 @@ with(subset(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, padj<.1 ), po
 
 # Now look at PM10 concentration effects on differential abundance
 # Convert phyloseq data to DESeq2 dataset object
-deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~DISP_PM10CONC_AnnualAv_WP99.5)
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~DISP_PM10CONC_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
@@ -1673,7 +1654,7 @@ sum(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered$padj < 0.1, na
 
 # Now look at nhorsesWghtDist.3000m.sum effects on differential abundance
 # Convert phyloseq data to DESeq2 dataset object
-deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~nhorsesWghtDist.3000m.sum)
+deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~nhorsesWghtDist.3000m.sum)
 
 # RUN  DESeq function 
 deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.nhorsesWghtDist.3000m.sum.cont)
@@ -1697,7 +1678,7 @@ sum(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 
 
 # Now look at ngoatsWghtDist.3000m.sum effects on differential abundance
 # Convert phyloseq data to DESeq2 dataset object
-deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp,~ngoatsWghtDist.3000m.sum)
+deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~ngoatsWghtDist.3000m.sum)
 
 # RUN  DESeq function 
 deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.ngoatsWghtDist.3000m.sum.cont)
@@ -1716,75 +1697,73 @@ deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont.ordered #erm(T)_4_AJ488494 has 
 
 # How many adjusted p-values are < 0.1? 
 sum(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+```
 
-
+### DESeq with quartiles and halves
+```{r}
 # DESeq2 with exposure quantiles
 # Now I need to categorise my exposure proxy variables which are currently continuous numeric to quartiles (factor variables)
 # I will use the cut() function 
 ?cut
 # MinDistAnyFarm.NEG
-ARGcluster.aggl.DESeq2.exp.quart <- ARGcluster.aggl.DESeq2.exp
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG, breaks=4, labels =c("1st quartile (minDistAnyFarm.NEG)", "2nd quartile (minDistAnyFarm.NEG)", "3rd quartile (minDistAnyFarm.NEG)", "4th quartile (minDistAnyFarm.NEG)"))
+Final.ps.DAanalysis.exp.clusternames.quart <- Final.ps.DAanalysis.exp.clusternames
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$MinDistAnyFarm.NEG<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$MinDistAnyFarm.NEG, breaks=4, labels =c("1st quartile (minDistAnyFarm.NEG)", "2nd quartile (minDistAnyFarm.NEG)", "3rd quartile (minDistAnyFarm.NEG)", "4th quartile (minDistAnyFarm.NEG)"))
 # MinDistAnyFarm.INV
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.INV<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.INV, breaks=4, labels =c("1st quartile (MinDistAnyFarm.INV)", "2nd quartile (MinDistAnyFarm.INV)", "3rd quartile (MinDistAnyFarm.INV)", "4th quartile (MinDistAnyFarm.INV)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$MinDistAnyFarm.INV<- cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$MinDistAnyFarm.INV, breaks=4, labels =c("1st quartile (MinDistAnyFarm.INV)", "2nd quartile (MinDistAnyFarm.INV)", "3rd quartile (MinDistAnyFarm.INV)", "4th quartile (MinDistAnyFarm.INV)"))
 # AllFarm.3000m
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.3000m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.3000m, breaks=4, labels =c("1st quartile (AllFarm.3000m)", "2nd quartile (AllFarm.3000m)", "3rd quartile (AllFarm.3000m)", "4th quartile (AllFarm.3000m)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.3000m<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.3000m, breaks=4, labels =c("1st quartile (AllFarm.3000m)", "2nd quartile (AllFarm.3000m)", "3rd quartile (AllFarm.3000m)", "4th quartile (AllFarm.3000m)"))
 #AllFarm.1000m
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.1000m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.1000m, breaks=4, labels =c("1st quartile (AllFarm.1000m)", "2nd quartile (AllFarm.1000m)", "3rd quartile (AllFarm.1000m)", "4th quartile (AllFarm.1000m)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.1000m<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.1000m, breaks=4, labels =c("1st quartile (AllFarm.1000m)", "2nd quartile (AllFarm.1000m)", "3rd quartile (AllFarm.1000m)", "4th quartile (AllFarm.1000m)"))
 #AllFarm.500m
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.500m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.500m, breaks=4, labels =c("1st quartile (AllFarm.500m)", "2nd quartile (AllFarm.500m)", "3rd quartile (AllFarm.500m)", "4th quartile (AllFarm.500m)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.500m<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.500m, breaks=4, labels =c("1st quartile (AllFarm.500m)", "2nd quartile (AllFarm.500m)", "3rd quartile (AllFarm.500m)", "4th quartile (AllFarm.500m)"))
 #AllFarm.250m
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.250m<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$AllFarm.250m, breaks=4, labels =c("1st quartile (AllFarm.250m)", "2nd quartile (AllFarm.250m)", "3rd quartile (AllFarm.250m)", "4th quartile (AllFarm.250m)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.250m<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$AllFarm.250m, breaks=4, labels =c("1st quartile (AllFarm.250m)", "2nd quartile (AllFarm.250m)", "3rd quartile (AllFarm.250m)", "4th quartile (AllFarm.250m)"))
 #npigsWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.1000m.sum)", "2nd quartile (npigsWghtDist.1000m.sum)", "3rd quartile (npigsWghtDist.1000m.sum)", "4th quartile (npigsWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npigsWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npigsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.1000m.sum)", "2nd quartile (npigsWghtDist.1000m.sum)", "3rd quartile (npigsWghtDist.1000m.sum)", "4th quartile (npigsWghtDist.1000m.sum)"))
 #npoultryWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.1000m.sum)", "2nd quartile (npoultryWghtDist.1000m.sum)", "3rd quartile (npoultryWghtDist.1000m.sum)", "4th quartile (npoultryWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npoultryWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npoultryWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.1000m.sum)", "2nd quartile (npoultryWghtDist.1000m.sum)", "3rd quartile (npoultryWghtDist.1000m.sum)", "4th quartile (npoultryWghtDist.1000m.sum)"))
 #ncowsWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.1000m.sum<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.1000m.sum)", "2nd quartile (ncowsWghtDist.1000m.sum)", "3rd quartile (ncowsWghtDist.1000m.sum)", "4th quartile (ncowsWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ncowsWghtDist.1000m.sum<- cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ncowsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.1000m.sum)", "2nd quartile (ncowsWghtDist.1000m.sum)", "3rd quartile (ncowsWghtDist.1000m.sum)", "4th quartile (ncowsWghtDist.1000m.sum)"))
 #nhorsesWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.1000m.sum)", "2nd quartile (nhorsesWghtDist.1000m.sum)", "3rd quartile (nhorsesWghtDist.1000m.sum)", "4th quartile (nhorsesWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nhorsesWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nhorsesWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.1000m.sum)", "2nd quartile (nhorsesWghtDist.1000m.sum)", "3rd quartile (nhorsesWghtDist.1000m.sum)", "4th quartile (nhorsesWghtDist.1000m.sum)"))
 #ngoatsWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ngoatsWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ngoatsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
 #nsheepWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.1000m.sum)", "2nd quartile (nsheepWghtDist.1000m.sum)", "3rd quartile (nsheepWghtDist.1000m.sum)", "4th quartile (nsheepWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nsheepWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nsheepWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.1000m.sum)", "2nd quartile (nsheepWghtDist.1000m.sum)", "3rd quartile (nsheepWghtDist.1000m.sum)", "4th quartile (nsheepWghtDist.1000m.sum)"))
 #nfuranimsWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.1000m.sum)", "2nd quartile (nfuranimsWghtDist.1000m.sum)", "3rd quartile (nfuranimsWghtDist.1000m.sum)", "4th quartile (nfuranimsWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nfuranimsWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nfuranimsWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.1000m.sum)", "2nd quartile (nfuranimsWghtDist.1000m.sum)", "3rd quartile (nfuranimsWghtDist.1000m.sum)", "4th quartile (nfuranimsWghtDist.1000m.sum)"))
 #npigsWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npigsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.3000m.sum)", "2nd quartile (npigsWghtDist.3000m.sum)", "3rd quartile (npigsWghtDist.3000m.sum)", "4th quartile (npigsWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npigsWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npigsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npigsWghtDist.3000m.sum)", "2nd quartile (npigsWghtDist.3000m.sum)", "3rd quartile (npigsWghtDist.3000m.sum)", "4th quartile (npigsWghtDist.3000m.sum)"))
 #npoultryWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$npoultryWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.3000m.sum)", "2nd quartile (npoultryWghtDist.3000m.sum)", "3rd quartile (npoultryWghtDist.3000m.sum)", "4th quartile (npoultryWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npoultryWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$npoultryWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (npoultryWghtDist.3000m.sum)", "2nd quartile (npoultryWghtDist.3000m.sum)", "3rd quartile (npoultryWghtDist.3000m.sum)", "4th quartile (npoultryWghtDist.3000m.sum)"))
 #ncowsWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ncowsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.3000m.sum)", "2nd quartile (ncowsWghtDist.3000m.sum)", "3rd quartile (ncowsWghtDist.3000m.sum)", "4th quartile (ncowsWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ncowsWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ncowsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ncowsWghtDist.3000m.sum)", "2nd quartile (ncowsWghtDist.3000m.sum)", "3rd quartile (ncowsWghtDist.3000m.sum)", "4th quartile (ncowsWghtDist.3000m.sum)"))
 #nhorsesWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nhorsesWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.3000m.sum)", "2nd quartile (nhorsesWghtDist.3000m.sum)", "3rd quartile (nhorsesWghtDist.3000m.sum)", "4th quartile (nhorsesWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nhorsesWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nhorsesWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nhorsesWghtDist.3000m.sum)", "2nd quartile (nhorsesWghtDist.3000m.sum)", "3rd quartile (nhorsesWghtDist.3000m.sum)", "4th quartile (nhorsesWghtDist.3000m.sum)"))
 #ngoatsWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$ngoatsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.3000m.sum)", "2nd quartile (ngoatsWghtDist.3000m.sum)", "3rd quartile (ngoatsWghtDist.3000m.sum)", "4th quartile (ngoatsWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ngoatsWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$ngoatsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (ngoatsWghtDist.3000m.sum)", "2nd quartile (ngoatsWghtDist.3000m.sum)", "3rd quartile (ngoatsWghtDist.3000m.sum)", "4th quartile (ngoatsWghtDist.3000m.sum)"))
 #nsheepWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nsheepWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.3000m.sum)", "2nd quartile (nsheepWghtDist.3000m.sum)", "3rd quartile (nsheepWghtDist.3000m.sum)", "4th quartile (nsheepWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nsheepWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nsheepWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nsheepWghtDist.3000m.sum)", "2nd quartile (nsheepWghtDist.3000m.sum)", "3rd quartile (nsheepWghtDist.3000m.sum)", "4th quartile (nsheepWghtDist.3000m.sum)"))
 #nfuranimsWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nfuranimsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.3000m.sum)", "2nd quartile (nfuranimsWghtDist.3000m.sum)", "3rd quartile (nfuranimsWghtDist.3000m.sum)", "4th quartile (nfuranimsWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nfuranimsWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nfuranimsWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nfuranimsWghtDist.3000m.sum)", "2nd quartile (nfuranimsWghtDist.3000m.sum)", "3rd quartile (nfuranimsWghtDist.3000m.sum)", "4th quartile (nfuranimsWghtDist.3000m.sum)"))
 #nAnyFarmWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.1000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.1000m.sum)", "2nd quartile (nAnyFarmWghtDist.1000m.sum)", "3rd quartile (nAnyFarmWghtDist.1000m.sum)", "4th quartile (nAnyFarmWghtDist.1000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nAnyFarmWghtDist.1000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nAnyFarmWghtDist.1000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.1000m.sum)", "2nd quartile (nAnyFarmWghtDist.1000m.sum)", "3rd quartile (nAnyFarmWghtDist.1000m.sum)", "4th quartile (nAnyFarmWghtDist.1000m.sum)"))
 #nAnyFarmWghtDist.3000m.sum
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$nAnyFarmWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.3000m.sum)", "2nd quartile (nAnyFarmWghtDist.3000m.sum)", "3rd quartile (nAnyFarmWghtDist.3000m.sum)", "4th quartile (nAnyFarmWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$nAnyFarmWghtDist.3000m.sum, breaks=4, labels =c("1st quartile (nAnyFarmWghtDist.3000m.sum)", "2nd quartile (nAnyFarmWghtDist.3000m.sum)", "3rd quartile (nAnyFarmWghtDist.3000m.sum)", "4th quartile (nAnyFarmWghtDist.3000m.sum)"))
 #DISP_EUinPM10_AnnualAv_WP99.5
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "2nd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "3rd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "4th quartile (DISP_EUinPM10_AnnualAv_WP99.5)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "2nd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "3rd quartile (DISP_EUinPM10_AnnualAv_WP99.5)", "4th quartile (DISP_EUinPM10_AnnualAv_WP99.5)"))
 #DISP_PM10CONC_AnnualAv_WP99.5
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "2nd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "3rd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "4th quartile (DISP_PM10CONC_AnnualAv_WP99.5)"))
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(Final.ps.DAanalysis.exp.clusternames.quart@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=4, labels =c("1st quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "2nd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "3rd quartile (DISP_PM10CONC_AnnualAv_WP99.5)", "4th quartile (DISP_PM10CONC_AnnualAv_WP99.5)"))
 
-
-# column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
-colnames(ARGcluster.aggl.DESeq2.exp.quart@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
 
 #Inspect the new ps object
-ARGcluster.aggl.DESeq2.exp.quart
-ARGcluster.aggl.DESeq2.exp.quart@otu_table # clusters labelled correctly 
-ARGcluster.aggl.DESeq2.exp.quart@sam_data # exposure proxy sample data added 
-ARGcluster.aggl.DESeq2.exp.quart@sam_data$MinDistAnyFarm.NEG # exposure proxy data is in quartiles 
-
+Final.ps.DAanalysis.exp.clusternames.quart
+Final.ps.DAanalysis.exp.clusternames.quart@otu_table # clusters labelled correctly 
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data # exposure proxy sample data added 
+Final.ps.DAanalysis.exp.clusternames.quart@sam_data$MinDistAnyFarm.NEG # exposure proxy data is in quartiles 
 # Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
 # Convert phyloseq data to DESeq2 dataset object - start with endotoxin concentration
-deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.quart,~DISP_EUinPM10_AnnualAv_WP99.5)
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames.quart,~DISP_EUinPM10_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart)
@@ -1806,7 +1785,7 @@ sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart$padj < 0.1, na.rm=TRU
 
 
 #PM10 concentration 
-deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.quart,~DISP_PM10CONC_AnnualAv_WP99.5)
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames.quart,~DISP_PM10CONC_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.quart)
@@ -1829,17 +1808,15 @@ sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.quart$padj < 0.1, na.rm=TRU
 
 # convert exposure proxies into top and bottom halves 
 #DISP_EUinPM10_AnnualAv_WP99.5
-ARGcluster.aggl.DESeq2.exp.half <- ARGcluster.aggl.DESeq2.exp
+Final.ps.DAanalysis.exp.clusternames.half <- Final.ps.DAanalysis.exp.clusternames
 
-colnames(ARGcluster.aggl.DESeq2.exp.half@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
-
-ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_EUinPM10_AnnualAv_WP99.5)", "Bottom half (DISP_EUinPM10_AnnualAv_WP99.5)"))
+Final.ps.DAanalysis.exp.clusternames.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- cut(Final.ps.DAanalysis.exp.clusternames.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_EUinPM10_AnnualAv_WP99.5)", "Bottom half (DISP_EUinPM10_AnnualAv_WP99.5)"))
 #DISP_PM10CONC_AnnualAv_WP99.5
-ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_PM10CONC_AnnualAv_WP99.5)", "Bottom half (DISP_PM10CONC_AnnualAv_WP99.5)"))
+Final.ps.DAanalysis.exp.clusternames.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- cut(Final.ps.DAanalysis.exp.clusternames.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=2, labels =c("Top half (DISP_PM10CONC_AnnualAv_WP99.5)", "Bottom half (DISP_PM10CONC_AnnualAv_WP99.5)"))
 
 #Re-run Deseq2 with 'halved' data rather than in quartiles 
 # Convert phyloseq data to DESeq2 dataset object - start with endotoxin concentration
-deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~DISP_EUinPM10_AnnualAv_WP99.5)
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames.half,~DISP_EUinPM10_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.half)
@@ -1861,7 +1838,7 @@ sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.half.ordered$padj < 0.1, na
 
 
 #PM10 concentration 
-deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~DISP_PM10CONC_AnnualAv_WP99.5)
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames.half,~DISP_PM10CONC_AnnualAv_WP99.5)
 
 # RUN  DESeq function 
 deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.half)
@@ -1883,10 +1860,10 @@ sum(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.half$padj < 0.1, na.rm=TRUE
 
 # Now I will look at some of the other exposure variables 
 #nhorsesWghtDist.1000m.sum
-ARGcluster.aggl.DESeq2.exp.half <- ARGcluster.aggl.DESeq2.exp
-colnames(ARGcluster.aggl.DESeq2.exp.half@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
-ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum<- cut(ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum, breaks=2, labels =c("Top half (nhorsesWghtDist.1000m.sum)", "Bottom half (nhorsesWghtDist.1000m.sum)"))
-deseq2.exp.nhorsesWghtDist.1000m.sum.half <- phyloseq_to_deseq2(ARGcluster.aggl.DESeq2.exp.half,~nhorsesWghtDist.1000m.sum)
+Final.ps.DAanalysis.exp.clusternames.half <- Final.ps.DAanalysis.exp.clusternames
+
+Final.ps.DAanalysis.exp.clusternames.half@sam_data$nhorsesWghtDist.1000m.sum<- cut(Final.ps.DAanalysis.exp.clusternames.half@sam_data$nhorsesWghtDist.1000m.sum, breaks=2, labels =c("Top half (nhorsesWghtDist.1000m.sum)", "Bottom half (nhorsesWghtDist.1000m.sum)"))
+deseq2.exp.nhorsesWghtDist.1000m.sum.half <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames.half,~nhorsesWghtDist.1000m.sum)
 # RUN  DESeq function 
 deseq2.exp.nhorsesWghtDist.1000m.sum.half <- DESeq(deseq2.exp.nhorsesWghtDist.1000m.sum.half)
 deseq2.results.exp.nhorsesWghtDist.1000m.sum.half <- results(deseq2.exp.nhorsesWghtDist.1000m.sum.half)
@@ -1902,56 +1879,10 @@ deseq2.results.exp.nhorsesWghtDist.1000m.sum.half.ordered
 # How many adjusted p-values are < 0.1? 
 sum(deseq2.results.exp.nhorsesWghtDist.1000m.sum.half.ordered$padj < 0.1, na.rm=TRUE) # 4 ARG clusters have padj <0.1
 
-barchart(ARGcluster.aggl.DESeq2.exp.half@sam_data$nhorsesWghtDist.1000m.sum)
+barchart(Final.ps.DAanalysis.exp.clusternames.half@sam_data$nhorsesWghtDist.1000m.sum)
 ```
-<!-- ##### DESeq plots for poster -->
-<!-- ```{r} -->
-<!-- # Creating plots for poster presentation Jan 2022  -->
-<!-- # I will use dispersion modelled endotoxin as explanatory variable and tet(w) as outcome as this came out as signifcantly increased in deseq2 analysis with disp modelled endotoxin and PM10 -->
-<!-- endotox.dispmodel<- ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous  -->
-<!-- ARGcluster.aggl.DESeq2.exp@otu_table$tet(W) -->
-<!-- otu_table(ARGcluster.aggl.DESeq2.exp)[,"tet(W)"] -->
-<!-- endotox.dispmodel.df <- as.data.frame(ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5) -->
-<!-- tetW.df <-as.data.frame(otu_table(ARGcluster.aggl.DESeq2.exp)[,"tet(W)"]) -->
-<!-- rownames(tetW.df) <- NULL -->
 
-<!-- combined.df <- data.frame(endotox.dispmodel.df, tetW.df) # Put them in the same data.frame -->
-<!-- plot(combined.df$ARGcluster.aggl.DESeq2.exp.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined.df$tet.W.,  main="Scatterplot dispersion modelled endotoxin vs tet(W)", xlab="Disp. modelled endotoxin concentration", ylab="tet(W) concentratio", pch=19) -->
-<!-- # Looks like outliers are probably influencing this result  -->
-
-<!-- # Find another exposure proxy to present in poster -->
-<!-- # Try quantiles of endotoxin exposure -->
-<!-- ARGcluster.aggl.DESeq2.exp.quart@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is in quartiles  -->
-<!-- hist(sample_data(ARGcluster.aggl.DESeq2.exp.quart)[,"DISP_EUinPM10_AnnualAv_WP99.5"])  -->
-
-<!-- plot(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df) -->
-<!-- combined2.df <- data.frame(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df)  -->
-<!-- plot(combined2.df$ARGcluster.aggl.noblanks.exp.quant.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined2.df$tet.W.) -->
-
-
-<!-- # Split endotoxin exposure in half instead of in quantiles -->
-<!-- Endotoxin.splithalf <- ARGcluster.aggl.noblanks.exp -->
-<!-- Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 <- quantcut(Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=2, labels =c("Low", "High")) -->
-<!-- combined3.df <- data.frame(Endotoxin.splithalf@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, tetW.df)  -->
-<!-- boxplot.endotox <- plot(combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined3.df$tet.W., main="Comparison of tet(W) gene counts between high and low endotoxin exposed individuals", xlab="Endotoxin exposure level", ylab="tet(W) gene counts", pch=20, cex.main= 2, cex.lab= 2, cex.axis= 2) -->
-
-<!-- ggplot(combined3.df) -->
-
-<!-- geom_boxplot(outlier.colour="black", outlier.shape=16, -->
-<!--              outlier.size=2, notch=FALSE) -->
-
-<!-- p <- ggplot(combined3.df, aes(x="Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5", y="tet.W.")) +  -->
-<!--   geom_boxplot() -->
-
-<!-- ggplot(aes(x=combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, y=combined3.df$tet.W., fill=combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5)) +  -->
-<!--   geom_boxplot(width=0.5,lwd=1)+ -->
-<!--   labs(subtitle="Filling Boxplot with Colors by a Variable") -->
-
-<!-- boxplot(combined3.df$Endotoxin.splithalf.sam_data.DISP_EUinPM10_AnnualAv_WP99.5, combined3.df$tet.W., main="Comparison of tet(W) gene counts between high and low endotoxin exposed individuals", xlab="Endotoxin exposure level", ylab="tet(W) gene counts", pch=20) -->
-
-<!-- ``` -->
-
-#### DESeq2 (filtered - 0.1% relative abundance, 15% prevalent)
+## DESeq2 on filtered data (0.1% relative abundance, 15% prevalent)
 ```{r}
 # copy over the previously agglomerated and filtered ps object from my above DESeq2 analysis
 ARGcluster.aggl.DESeq2.filtered.exp <- ARGcluster.aggl.DESeq2.filtered.relative
@@ -2039,7 +1970,8 @@ deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont.ordered
 # How many adjusted p-values are < 0.1? 
 sum(deseq2.results.exp.filtered.ngoatsWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
 ```
-#### ALDEx2
+## ALDEx2
+### ALDEx2 on unfiltered data
 ```{r}
 BiocManager::install("ALDEx2")
 library(ALDEx2)
@@ -2222,7 +2154,7 @@ count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1)
 
 ```
 
-#### ALDEx2 (filtered - 0.1% relative abundance, 15% prevalent)
+### ALDEx2 on filtered data (0.1% relative abundance, 15% prevalent)
 ```{r}
 library(ALDEx2)
 
@@ -2277,8 +2209,142 @@ count(aldex2.filtered.ngoatsWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clust
 
 # Could try with other exposure proxies but have chosen these based on previous beta-diversity results and logic.
 ```
-# ANCOM-BC2 
+## ANCOM-BC2 
+### ANCOM-BC2 on filtered data (0.1% relative abundance, 15% prevalent)
 ```{r}
+# ANCOM-BC2 does not work with continuous input data, therefore will split my variables into quartiles
+Final.ps.DAanalysis.exp.filtered
+# Split livestock exposure variables into quartiles
+# MinDistAnyFarm.NEG
+Final.ps.DAanalysis.exp.filtered.quart <- Final.ps.DAanalysis.exp.filtered
 
+#ngoatsWghtDist.1000m.sum
+# Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum, q=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
+
+# Difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe?
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum == 0, "No goat farms in 1000m","1 or more goat farms within 1000m")
+
+#nhorsesWghtDist.3000m.sum
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st quartile (nhorsesWghtDist.3000m.sum)", "2nd quartile (nhorsesWghtDist.3000m.sum)", "3rd quartile (nhorsesWghtDist.3000m.sum)", "4th quartile (nhorsesWghtDist.3000m.sum)"))
+#nAnyFarmWghtDist.3000m.sum
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st quartile (nAnyFarmWghtDist.3000m.sum)", "2nd quartile (nAnyFarmWghtDist.3000m.sum)", "3rd quartile (nAnyFarmWghtDist.3000m.sum)", "4th quartile (nAnyFarmWghtDist.3000m.sum)"))
+
+
+#Inspect the new ps object
+Final.ps.DAanalysis.exp.filtered.quart
+Final.ps.DAanalysis.exp.filtered.quart@otu_table 
+Final.ps.DAanalysis.exp.filtered.quart@tax_table 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum 
+# Rename otu table column names to their ARG Cluster name
+colnames(Final.ps.DAanalysis.exp.filtered.quart@otu_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+
+rownames(Final.ps.DAanalysis.exp.filtered.quart@tax_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+
+# Subset the tax_table to "ARGCluster"
+argcluster_tax <- tax_table(Final.ps.DAanalysis.exp.filtered.quart)[, "ARGCluster"]
+rownames(argcluster_tax) <- argcluster_tax[, "ARGCluster"]
+
+# Create a new phyloseq object
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel <- phyloseq(
+  otu_table(Final.ps.DAanalysis.exp.filtered.quart),
+  sample_data(Final.ps.DAanalysis.exp.filtered.quart),
+  tax_table = argcluster_tax
+)
+
+# Run ANCOMBC2 analysis - nAnyFarmWghtDist.3000m.sum quartiles
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nAnyFarmWghtDist.3000m.sum
+
+out_nAnyFarmWghtDist.3000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "nAnyFarmWghtDist.3000m.sum + copdcaco",
+  group = "nAnyFarmWghtDist.3000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+saveRDS(out_nAnyFarmWghtDist.3000m.sum, "Output_files//Differential_abundance//ANCOMBC2_output_nAnyFarmWghtDist.3000m.sum.rds")
+
+# Differential abundance test 
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum <- out_nAnyFarmWghtDist.3000m.sum$res
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$diff_copdcaco1
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$p_copdcaco1
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$q_copdcaco1
+any(ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$diff_copdcaco1 == "TRUE")
+# None come out as significant. 
+
+
+# N.B copdcaco = 0 (control) is used as the reference group in my case
+# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in ARG abundance. lfc_(Intercept): This column represents the LFC for each ARG  between the reference group (Intercept) and itself. In other words, it shows the estimated change in abundance or expression of each taxon within the reference group. The LFC_(Intercept) values indicate how much the abundance or expression of each ARG varies within the reference group. fc_copdcaco1: This column represents the LFC for each ARG or feature between the reference group (Intercept) and the "copdcaco1" group. It shows the estimated change in abundance or expression of each taxon when comparing the reference group to the "copdcaco1" group. A positive LFC indicates an increase in abundance or expression in the "copdcaco1" group compared to the reference group, while a negative LFC suggests a decrease. The magnitude of the LFC_(copdcaco1) values provides information about the size of the difference between these two groups.
+# se_(Intercept) and se_copdcaco1: These represent the standard errors associated with the log-fold changes for the reference group and the copdcaco1 group, respectively. The standard error provides a measure of the uncertainty associated with the LFC estimate.
+# W_(Intercept) and W_copdcaco1: These values correspond to the Wilcoxon rank-sum test statistics for the reference group and the copdcaco1 group. These statistics are used to assess the significance of differences in microbial abundance between the groups.
+# p_(Intercept) and p_copdcaco1: These represent the p-values associated with the Wilcoxon rank-sum tests for the reference group and the copdcaco1 group. A small p-value indicates that there is evidence to reject the null hypothesis, suggesting significant differences in abundance between the groups.
+# q_(Intercept) and q_copdcaco1: These values may represent adjusted p-values, often corrected for multiple comparisons. Adjusted p-values take into account the issue of conducting multiple statistical tests and help control the family-wise error rate.
+# diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
+
+
+# Run ANCOMBC2 analysis - nhorsesWghtDist.3000m.sum quartiles
+out_nhorsesWghtDist.3000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "nhorsesWghtDist.3000m.sum + copdcaco",
+  group = "nhorsesWghtDist.3000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+saveRDS(out_nhorsesWghtDist.3000m.sum, "Output_files//Differential_abundance//ANCOMBC2_output_nhorsesWghtDist.3000m.sum.rds")
+
+# Differential abundance test 
+ANCOMBC2.results.nhorsesWghtDist.3000m.sum <- out_nhorsesWghtDist.3000m.sum$res
+ANCOMBC2.results.nhorsesWghtDist.3000m.sum$diff_copdcaco1
+ANCOMBC2.results.nhorsesWghtDist.3000m.sum$p_copdcaco1
+ANCOMBC2.results.nhorsesWghtDist.3000m.sum$q_copdcaco1
+any(ANCOMBC2.results.nhorsesWghtDist.3000m.sum$diff_copdcaco1 == "TRUE")
+# None come out as significant. 
+
+
+# Run ANCOMBC2 analysis - ngoatsWghtDist.1000m.sum halves (since quartiles doesn't work because there are < 2 in the 4th quartile)
+
+
+Final.ps.DAanalysis.exp.filtered.half <- Final.ps.DAanalysis.exp.filtered
+Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum<- cut(Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum, breaks=2, labels =c("Top half (ngoatsWghtDist.1000m.sum)", "Bottom half (ngoatsWghtDist.1000m.sum)"))
+
+out_ngoatsWghtDist.1000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "ngoatsWghtDist.1000m.sum + copdcaco",
+  group = "ngoatsWghtDist.1000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$ngoatsWghtDist.1000m.sum
+# Differential abundance test 
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum <- out_ngoatsWghtDist.1000m.sum$res
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$p_copdcaco1
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$q_copdcaco1
+any(ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1 == "TRUE")
 ```
 
