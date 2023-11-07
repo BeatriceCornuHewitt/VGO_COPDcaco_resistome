@@ -4,7 +4,7 @@
 ```{r}
 # Import the LUR and RF estimates of E.coli, staph, tetW and mecA concentrations for each of the 69 participant
 # SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
-LUR_RF_residential_predictions  <- read.xlsx("Output_files//LUR_RF_residential_predictions.xlsx")
+LUR_RF_residential_predictions  <- read.xlsx("Output_files//LUR_RF_models//LUR_RF_residential_predictions.xlsx")
 
 LUR_RF_residential_predictions <- data.frame(LUR_RF_residential_predictions, row.names = LUR_RF_residential_predictions$X1)
 LUR_RF_residential_predictions$X1 <- NULL 
@@ -45,7 +45,7 @@ summary_statistics_df <- data.frame(
 
 # Display the summary statistics
 print(summary_statistics_df)
-write.xlsx(summary_statistics_df, "Output_files//summary_statistics_df_residential_modelled_exp.xlsx")
+write.xlsx(summary_statistics_df, "Output_files//LUR_RF_models//summary_statistics_df_residential_modelled_exp.xlsx")
 
 # Check distribution of modelled concentrations
 hist(LUR_RF_residential_predictions$E.coli_LUR_estimates)
@@ -61,7 +61,7 @@ hist(LUR_RF_residential_predictions$mecA_RF_predictions)
 # FOR PRESENTATION SLIDES 
 # Now I want to compute summary statistics per group i.e. for COPD and control separately
 # this ss has the LUR and RF-modelled concentrations, pt IDs and copd status
-LUR_RF_residential_predictions_copdstatus <- read.xlsx("Output_files//LUR_RF_residential_predictions_copdstatus.xlsx")
+LUR_RF_residential_predictions_copdstatus <- read.xlsx("Output_files//LUR_RF_models//LUR_RF_residential_predictions_copdstatus.xlsx")
 
 # Group data based on the 'copdcaco' column
 copdcaco_grouped_data <- LUR_RF_residential_predictions_copdstatus %>%
@@ -192,7 +192,7 @@ summary(lm_observed_mecA_RF)
 All_LUR_RF_models <- list(lm_shannon_E.coli_LUR, lm_shannon_Staph_LUR, lm_shannon_tetW_LUR, lm_shannon_mecA_LUR, lm_simpeveness_E.coli_LUR, lm_simpeveness_Staph_LUR, lm_simpeveness_tetW_LUR, lm_simpeveness_mecA_LUR, lm_observed_E.coli_LUR, lm_observed_Staph_LUR, lm_observed_tetW_LUR, lm_observed_mecA_LUR,lm_shannon_E.coli_RF, lm_shannon_Staph_RF, lm_shannon_tetW_RF, lm_shannon_mecA_RF, lm_simpeveness_E.coli_RF, lm_simpeveness_Staph_RF, lm_simpeveness_tetW_RF, lm_simpeveness_mecA_RF, lm_observed_E.coli_RF, lm_observed_Staph_RF, lm_observed_tetW_RF, lm_observed_mecA_RF)
 # Print results of all regression models
 combined_results <- map_dfr(All_LUR_RF_models, tidy)
-write.csv(combined_results, file = "Output_files//Alpha_diversity_LUR_RF_microbial_exposure_results.csv", row.names = FALSE)
+write.csv(combined_results, file = "Output_files//Alpha_diversity//Alpha_diversity_LUR_RF_microbial_exposure_results.csv", row.names = FALSE)
 
 # Assumption checking
 # Checking assumptions of multiple linear regression models
