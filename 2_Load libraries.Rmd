@@ -31,6 +31,7 @@ library(tibble)
 library(tidyr)
 library(plyr)
 library(utils)
+library(DT)
 library(eulerr) # for venn diagram 
 # library(microbiomeSeq) # For alpha diversity plots/anovas
 library(ggpubr) #for adding significance values to boxplots
