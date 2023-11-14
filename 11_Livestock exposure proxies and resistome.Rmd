@@ -1254,7 +1254,7 @@ Multivar.permanova <- permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="br
 
 Multivar.permanova <- permanovas_formula(ARGcluster.aggl.noblanks.exp, distm="bray", perms=999,terms=c("MinDistAnyFarm.NEG","MinDistAnyFarm.INV","AllFarm.3000m"))
 
-saveRDS(ARGcluster.aggl.noblanks.exp, "PS_Object_BCH_PERMANOVA")
+saveRDS(ARGcluster.aggl.noblanks.exp, "Output_files//Phyloseq_objects//PS_Object_BCH_PERMANOVA")
 
 # Error about colnames received - researched online - try changing adonis function to adonis2 function...
 permanovas_formula_adonis2 <- function(physeq, distm="bray", perms=999, vars="", verbose=TRUE,terms=NULL) {
@@ -2222,12 +2222,12 @@ Final.ps.DAanalysis.exp.filtered.quart <- Final.ps.DAanalysis.exp.filtered
 # Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum, q=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
 
 # Difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe?
-Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum == 0, "No goat farms in 1000m","1 or more goat farms within 1000m")
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum == 0, "No_goat_farms_within_1000m","1_or_more_goat_farms_within_1000m")
 
 #nhorsesWghtDist.3000m.sum
-Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st quartile (nhorsesWghtDist.3000m.sum)", "2nd quartile (nhorsesWghtDist.3000m.sum)", "3rd quartile (nhorsesWghtDist.3000m.sum)", "4th quartile (nhorsesWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st_quartile_nhorsesWghtDist.3000m.sum", "2nd_quartile_nhorsesWghtDist.3000m.sum", "3rd_quartile_nhorsesWghtDist.3000m.sum", "4th_quartile_nhorsesWghtDist.3000m.sum"))
 #nAnyFarmWghtDist.3000m.sum
-Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st quartile (nAnyFarmWghtDist.3000m.sum)", "2nd quartile (nAnyFarmWghtDist.3000m.sum)", "3rd quartile (nAnyFarmWghtDist.3000m.sum)", "4th quartile (nAnyFarmWghtDist.3000m.sum)"))
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st_quartile_nAnyFarmWghtDist.3000m.sum", "2nd_quartile_nAnyFarmWghtDist.3000m.sum", "3rd_quartile_nAnyFarmWghtDist.3000m.sum", "4th_quartile_nAnyFarmWghtDist.3000m.sum"))
 
 
 #Inspect the new ps object
@@ -2290,6 +2290,10 @@ any(ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$diff_copdcaco1 == "TRUE")
 # q_(Intercept) and q_copdcaco1: These values may represent adjusted p-values, often corrected for multiple comparisons. Adjusted p-values take into account the issue of conducting multiple statistical tests and help control the family-wise error rate.
 # diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
 
+str(Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum)
+# Then rearrange the levels with the desired reference group (3rd quartile)
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum <-
+  relevel(Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum, ref = "1st_quartile_nhorsesWghtDist.3000m.sum")
 
 # Run ANCOMBC2 analysis - nhorsesWghtDist.3000m.sum quartiles
 out_nhorsesWghtDist.3000m.sum = ancombc2(
@@ -2307,20 +2311,36 @@ out_nhorsesWghtDist.3000m.sum = ancombc2(
   verbose = TRUE
 )
 
-saveRDS(out_nhorsesWghtDist.3000m.sum, "Output_files//Differential_abundance//ANCOMBC2_output_nhorsesWghtDist.3000m.sum.rds")
+# Check for structural zeros
+tab_zero <- out_nhorsesWghtDist.3000m.sum$zero_ind
+write.xlsx(tab_zero, "Output_files//Differential_abundance//ANCOMBC2.tab.zero.nhorses.xlsx")
 
-# Differential abundance test 
-ANCOMBC2.results.nhorsesWghtDist.3000m.sum <- out_nhorsesWghtDist.3000m.sum$res
-ANCOMBC2.results.nhorsesWghtDist.3000m.sum$diff_copdcaco1
-ANCOMBC2.results.nhorsesWghtDist.3000m.sum$p_copdcaco1
-ANCOMBC2.results.nhorsesWghtDist.3000m.sum$q_copdcaco1
-any(ANCOMBC2.results.nhorsesWghtDist.3000m.sum$diff_copdcaco1 == "TRUE")
-# None come out as significant. 
+# ANCOM-BC2 global test
+ANCOMBC2.global.results.nhorses <- out_nhorsesWghtDist.3000m.sum$res_global
+# Save results table as .xlsx
+write.xlsx(ANCOMBC2.global.results.nhorses, "Output_files//Differential_abundance//ANCOMBC2.global.results.nhorses.xlsx")
+
+# Primary analysis from ANCOM-BC2
+ANCOMBC2.results.nhorses <- out_nhorsesWghtDist.3000m.sum$res
+# Save results table as .xlsx
+write.xlsx(ANCOMBC2.results.nhorses, "Output_files//Differential_abundance//ANCOMBC2.results.nhorses.xlsx")
+
+
+
+# The primary goal of the ANCOM-BC2 global test is to discern taxa that demonstrate differential abundance between a minimum of two groups when analyzing three or more experimental groups.
+ANCOMBC2.global.results.nhorses$diff_abn
+any(ANCOMBC2.global.results.nhorses$diff_abn == "TRUE")
+# Get the row indices where "diff_abn" is TRUE
+true_indices <- which(ANCOMBC2.global.results.nhorses$diff_abn == TRUE)
+# Extract the rows with TRUE values
+true_rows <- ANCOMBC2.global.results.nhorses[true_indices, ]
+# Display the rows with TRUE values
+print(true_rows)
+
+
 
 
 # Run ANCOMBC2 analysis - ngoatsWghtDist.1000m.sum halves (since quartiles doesn't work because there are < 2 in the 4th quartile)
-
-
 Final.ps.DAanalysis.exp.filtered.half <- Final.ps.DAanalysis.exp.filtered
 Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum<- cut(Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum, breaks=2, labels =c("Top half (ngoatsWghtDist.1000m.sum)", "Bottom half (ngoatsWghtDist.1000m.sum)"))
 
@@ -2346,5 +2366,7 @@ ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1
 ANCOMBC2.results.ngoatsWghtDist.1000m.sum$p_copdcaco1
 ANCOMBC2.results.ngoatsWghtDist.1000m.sum$q_copdcaco1
 any(ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1 == "TRUE")
+
+
 ```
 

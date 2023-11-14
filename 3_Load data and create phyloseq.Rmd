@@ -231,7 +231,21 @@ zenodo_ps@otu_table
 zenodo_ps <- prune_samples(sample_names(zenodo_ps) != "13674", zenodo_ps) 
 zenodo_ps # Final PS object therefore now has 72 samples
 
-saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//zenodo_ps.rds")
+resistome_samdata<- zenodo_ps@sam_data
+resistome_samdata$ParticipantID <- rownames(resistome_samdata)
+write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
+
+
+zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
+zenodo_ps@sam_data$copdcaco
+zenodo_ps
+saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
+
+
+
+`Phyloseq_VGO_COPD_16s_dada2_silva_zenodo (1)`@tax_table
+zenodo_ps@tax_table
+
 ```
 # Correct PS for 16S qPCR counts
 ```{r}

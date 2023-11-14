@@ -531,7 +531,7 @@ ecount(network_bact_bact)
 
 # export edge list as csv 
 as.data.frame(edges_bac_bac)
-write.csv(as.data.frame(edges_bac_bac), "edges_bac_bac.csv")
+write.csv(as.data.frame(edges_bac_bac), "Output_files//Co-occurrence_networks//edges_bac_bac.csv")
 
 # Export graph as graphml 
 write.graph(network_bact_bact, "Output_files//Co-occurrence_networks//network_bact_bact_graphml_file.graphml", format= "graphml") # Now import this file into gephi for graph visualisation and creation of networks here

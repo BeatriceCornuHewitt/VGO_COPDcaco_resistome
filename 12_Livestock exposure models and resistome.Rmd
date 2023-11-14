@@ -289,39 +289,37 @@ p_value_simp_staph <- summary(lm_simpeveness_Staph_LUR)$coefficients[2, 4]
 # Create the ggplot object with your data
 staphLUR_simpson_plot <- ggplot(LUR_RF_exposure_alphadiversity_df, aes(x = Staph_LUR_estimates, y = Simpson_Evenness)) +
   # Customize the scatterplot points
-  geom_point(size = 4, color = "blue", alpha = 0.7) +
+  geom_point(size = 4, color = "black", alpha = 0.7) +
   # Add a regression line
   geom_abline(intercept = coef(lm_simpeveness_Staph_LUR)[1], slope = coef(lm_simpeveness_Staph_LUR)[2],
-              color = "red", linetype = "dashed", linewidth = 1.5) +
+              color = "cornflowerblue", linetype = "dashed", linewidth = 1.5) +
   # Add slope coefficient and p-value as annotations
   geom_text(x = max(LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness)-0.03,
-            label = paste("Slope coefficient =", round(slope_coef_simp_staph, 3)), color = "red", size = 4, hjust = 1, vjust = 1) +
+            label = paste("Slope coefficient =", round(slope_coef_simp_staph, 4)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
   geom_text(x = max(LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness) - 0.05,
-            label = paste("p-value =", signif(p_value_simp_staph, digits = 3)), color = "red", size = 4, hjust = 1, vjust = 1) +
+            label = paste("p-value =", signif(p_value_simp_staph, digits = 4)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
   # Customize x and y axis labels and title
-  labs(x = "Residential exposure to Staphylococcus (LUR-modelled) (gene copies/m^2)", y = "Simpson's Evenness index",
+  labs(x = "Residential exposure to Staphylococcus (LUR-modelled) \n(gene copies/m^2)", y = "Simpson's Evenness index",
        title = bquote(atop("Simpson's Evenness index vs. " * italic("Staphylococcus") * "exposure estimates"))) +
   # Customize the theme (adjust the appearance of the plot)
   theme_minimal() +
-  theme(plot.title = element_text(size = 14),
-        axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14))
+  theme(plot.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20))
 
 # Print the plot
 print(staphLUR_simpson_plot)
+ggsave(filename = "Output_files//Alpha_diversity//staphLUR_simpson_plot.svg", plot = staphLUR_simpson_plot, device = "svg", width = 10, height = 6, units = "in")
 
 
-# Assuming you have already calculated the linear regression model
+
 # lm_simpeveness_mecA_RF <- lm(Simpson_Evenness ~ mecA_RF_predictions, data = LUR_RF_exposure_alphadiversity_df)
-
 # Extract the slope coefficient and p-value from the linear regression model
 slope_coef <- coef(lm_simpeveness_mecA_RF)[2]
 names(slope_coef) <- NULL
 p_value <- summary(lm_simpeveness_mecA_RF)$coefficients[2, 4]
 
-# Assuming you have already calculated the linear regression model
 # lm_simpeveness_mecA_RF <- lm(Simpson_Evenness ~ mecA_RF_predictions, data = LUR_RF_exposure_alphadiversity_df)
-
 # Extract the slope coefficient and p-value from the linear regression model
 slope_coef <- coef(lm_simpeveness_mecA_RF)[2]
 names(slope_coef) <- NULL
@@ -330,52 +328,29 @@ p_value <- summary(lm_simpeveness_mecA_RF)$coefficients[2, 4]
 # Create the ggplot object with your data
 mecA_simpson_plot <- ggplot(LUR_RF_exposure_alphadiversity_df, aes(x = mecA_RF_predictions, y = Simpson_Evenness)) +
   # Customize the scatterplot points
-  geom_point(size = 4, color = "blue", alpha = 0.7) +
+  geom_point(size = 4, color = "black", alpha = 0.7) +
   # Add a regression line
   geom_abline(intercept = coef(lm_simpeveness_mecA_RF)[1], slope = coef(lm_simpeveness_mecA_RF)[2],
-              color = "red", linetype = "dashed", linewidth = 1.5) +
+              color = "cornflowerblue", linetype = "dashed", linewidth = 1.5) +
   # Add slope coefficient and p-value as annotations
   geom_text(x = max(LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness)-0.03,
-            label = paste("Slope coefficient =", round(slope_coef, 3)), color = "red", size = 4, hjust = 1, vjust = 1) +
+            label = paste("Slope coefficient =", round(slope_coef, 3)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
   geom_text(x = max(LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness) - 0.05,
-            label = paste("p-value =", signif(p_value, digits = 3)), color = "red", size = 4, hjust = 1, vjust = 1) +
+            label = paste("p-value =", signif(p_value, digits = 3)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
   # Customize x and y axis labels and title
-  labs(x = "Residential exposure to mecA (RF-modelled) (gene copies/m^2)", y = "Simpson's Evenness index",
+  labs(x = "Residential exposure to mecA (RF-modelled) \n(gene copies/m^2)", y = "Simpson's Evenness index",
        title = bquote(atop("Simpson's Evenness index vs. " * italic("mec") * "A exposure estimates"))) +
   # Customize the theme (adjust the appearance of the plot)
   theme_minimal() +
-  theme(plot.title = element_text(size = 14),
-        axis.text = element_text(size = 14),
-        axis.title = element_text(size = 14))
+  theme(plot.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20))
 
 # Print the plot
 print(mecA_simpson_plot)
+ggsave(filename = "Output_files/Alpha_diversity/mecA_simpson_plot.svg", plot = mecA_simpson_plot, device = "svg", width = 10, height = 6, units = "in")
 
 
-
-
-
-# For poster ERS
-# Create a ggplot object with your data
-mecA_simpson_plot <- ggplot(LUR_RF_exposure_alphadiversity_df, aes(x = mecA_RF_predictions, y = Simpson_Evenness)) +
-  # Customize the scatterplot points
-  geom_point(size = 4, color = "blue", alpha = 0.7) +
-  # Add a regression line
-  geom_abline(intercept = coef(lm_simpeveness_mecA_RF)[1], slope = coef(lm_simpeveness_mecA_RF)[2],
-              color = "red", linetype = "dashed", linewidth = 1.5) +
-  # Customize x and y axis labels and title
-  labs(x = "Residential livestock-associated microbial emission", y = "Simpson Evenness diversity index",
-       title = bquote(atop("Resistome alpha diversity vs. " * italic("mec") * "A exposure estimates"))) +
-  # Set the aspect ratio to 1 (square plot)
-  coord_fixed() +
-  # Customize the theme (adjust the appearance of the plot)
-  theme_minimal() +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_text(size = 14),
-        axis.title = element_text(size = 16))
-
-# Print the plot
-print(mecA_simpson_plot)
 ```
 # Beta diversity
 ## Ordinations

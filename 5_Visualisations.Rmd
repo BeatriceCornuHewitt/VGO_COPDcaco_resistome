@@ -94,6 +94,18 @@ COPDcontrolblank_plots_absolute <- combined_plots_absolute +
 COPDcontrolblank_plots_absolute
 
 
+# Your existing code to generate plots
+combined_plots <- AMRclass.absolute.bars.control + AMRclass.absolute.bars.copd + AMRclass.absolute.bars.blanks
+
+# Rearrange the order of the plots
+combined_plots_ordered <- combined_plots[[2]] / combined_plots[[1]] / combined_plots[[3]]
+
+# Save the combined plot
+ggsave("Output_files/AMR_abundance_plots/Absolute_abundances/combined_plots.png", combined_plots_ordered, width = 12, height = 8, dpi = 300)
+
+
+
+
 
 
 

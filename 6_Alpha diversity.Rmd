@@ -83,34 +83,53 @@ shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$Observed)
 
 # Create a dataframe for the sample data in the PS object 
 metadata.final.ps.billion.noblanks <- sam_data(Final.ps.multiplybillion.noblanks)
+metadata.final.ps.billion.noblanks$copdcaco <- revalue(metadata.final.ps.billion.noblanks$copdcaco, c("control"="Control"))
 
 # Create boxplots for COPD & controls 
 Shannon.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = shannon)) + 
-  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
-  ggtitle("Shannon diversity") + 
-    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
-  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
-  xlab("Study population")+
-  ylab("Shannon diversity index")+
-  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Shannon diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
+
 
 Simpson.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
-  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
-  ggtitle("Simpson Evenness diversity") + 
-    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
-  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
-  xlab("Study population")+
-  ylab("Simpson Evenness diversity index")+
-  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Simpson Evenness diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
 
 Observed.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = Observed)) + 
-  geom_boxplot(fill= c("red","blue"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
-  ggtitle("Observed diversity") + 
-    theme(plot.title= element_text(size=26, family = "serif"), axis.title= element_text(size =20, family = "serif"), axis.text = element_text(size = 20, family = "serif"))+
-  theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
-  xlab("Study population")+
-  ylab("Observed diversity index")+
-  geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Observed diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
+
+
 
 Shannon.diversity.plot
 Simpson.diversity.plot
@@ -135,25 +154,23 @@ Observed.diversity.plot
 # t-test of shannon diversity between COPD and controls 
 shannon.t.test <- t.test(metadata.final.ps.billion.noblanks$shannon~ metadata.final.ps.billion.noblanks$copdcaco)
 shannon.t.test
-
 # t-test appears (just) significant - i.e. there is a significant difference in shannon alpha diversity between COPD and controls
 
 # Wilcoxon rank sum (Mann-Whitney U) test of other alpha diversity measures between COPD and controls
-# Chao1
-wilcox.test(metadata.final.ps.billion.noblanks$Chao1~metadata.final.ps.billion.noblanks$copdcaco)
 # Observed
 wilcox.test(metadata.final.ps.billion.noblanks$Observed~metadata.final.ps.billion.noblanks$copdcaco)
 # Simpson evenness
 wilcox.test(metadata.final.ps.billion.noblanks$SimpsonEvenness~metadata.final.ps.billion.noblanks$copdcaco)
 
 # Add t-test results to the boxplot
-Shannon.diversity.plot.pval <- Shannon.diversity.plot +  stat_compare_means(method = "t.test", size=6, label.x = 0.6, label.y = 3.2)
-Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=6, label.x = 0.6, label.y = 0.42)
-Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=6,label.x = 0.6, label.y = 100)
+Shannon.diversity.plot.pval <- Shannon.diversity.plot +  stat_compare_means(method = "t.test", size=8, label.x = 0.6, label.y = 3.25)
+Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=8, label.x = 0.6, label.y = 0.42)
+Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=8,label.x = 0.6, label.y = 100)
 
 ggsave("Output_files//Alpha_diversity//Shannon_diversity_plot.png", Shannon.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
 ggsave("Output_files//Alpha_diversity//Simpson_diversity_plot.png", Simpson.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
 ggsave("Output_files//Alpha_diversity//Observed_diversity_plot.png", Observed.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+
 
 # variance in boxplots appears homogenous 
 # Will check formally with levene's test
@@ -258,7 +275,7 @@ metadata.ARGcluster.aggl.multiplybillion.noblanks <- sam_data(ARGcluster.aggl.mu
 
 # Create boxplots for COPD and control for the different alpha diversity measures
 Shannon.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = shannon)) + 
-  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  geom_boxplot(fill= c("cornflowerblue","orange"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
   ggtitle("Shannon diversity") + 
     theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
   theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
@@ -267,7 +284,7 @@ Shannon.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybill
   geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
 
 Simpson.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
-  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  geom_boxplot(fill= c("cornflowerblue","orange"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
   ggtitle("Simpson Evenness diversity") + 
     theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
   theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
@@ -276,7 +293,7 @@ Simpson.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybill
   geom_point(position = "jitter", size= 4, alpha=0.3) # adds jittered points to plot, not in matched colours yet though
 
 Observed.diversity.plot.clustered <- ggplot(metadata.ARGcluster.aggl.multiplybillion.noblanks, aes(x = copdcaco, y = Observed)) + 
-  geom_boxplot(fill= c("cornflowerblue","coral2"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
+  geom_boxplot(fill= c("cornflowerblue","orange"),  alpha=0.5, outlier.shape = NA, fatten= 4)+ # alpha argument makes fill more transparent, fatten argument makes median line thicker,
   ggtitle("Observed diversity") + 
     theme(plot.title= element_text(size=50, family = "serif"), axis.title= element_text(size =35, family = "serif"), axis.text = element_text(size = 35, family = "serif"))+
   theme(plot.title = element_text(hjust = 0.5))+ #puts title in centre 
@@ -290,7 +307,7 @@ Simpson.diversity.plot.clustered
 Observed.diversity.plot.clustered
 
 ```
-### Calculate alpha diversity difference - 90% cluster level
+### Calculate alpha diversity difference - 90% cluster level 
 ```{r}
 # Compare alpha diversity of COPD and control with a t-test or Mann-Whitney U test 
 
