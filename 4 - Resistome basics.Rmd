@@ -1,0 +1,332 @@
+---
+title: "4 - Resistome basics"
+output: html_notebook
+---
+# Number of ARGs per AMR class
+```{r}
+# Show available ranks in the dataset
+rank_names(Final.ps)
+
+# create a table to show the number of ARG clusters categorised into each AMR class in this data set
+table('tax_table'(ARGcluster.aggl)[, "ARG_class"], exclude = NULL)
+# This shows us that all ARGs have been assigned to an AMR class (as no NAs present here so no artifacts in the data)
+# We have a total of 85 genes which are categorised into 8 AMR classes 
+```
+# Abundance of ARG clusters across COPD, control and blank groups
+```{r}
+# Make new ps object with only COPD patients in this
+COPD_ps <- subset_samples(ARGcluster.aggl, copdcaco == "1")
+# Access the otu_table and tax_table from the COPD_ps phyloseq object
+COPD_otu_table <- otu_table(COPD_ps)
+COPD_tax_table <- tax_table(COPD_ps)
+# Get the row indices of taxa with at least one non-zero value
+COPD_non_zero_taxa <- which(rowSums(COPD_otu_table > 0) > 0)
+# Extract the taxa names with ARGCluster information
+COPD_ARGCluster_names <- as.character(COPD_tax_table[COPD_non_zero_taxa, "ARGCluster"])
+# Print the ARGCluster names
+print(COPD_ARGCluster_names)
+
+# Controls 
+control_ps <- subset_samples(ARGcluster.aggl, copdcaco == "0")
+# Access the otu_table and tax_table from the control_ps phyloseq object
+control_otu_table <- otu_table(control_ps)
+control_tax_table <- tax_table(control_ps)
+# Get the row indices of taxa with at least one non-zero value
+control_non_zero_taxa <- which(rowSums(control_otu_table > 0) > 0)
+# Extract the taxa names with ARGCluster information
+control_ARGCluster_names <- as.character(control_tax_table[control_non_zero_taxa, "ARGCluster"])
+# Print the ARGCluster names
+print(control_ARGCluster_names)
+
+# blanks 
+blanc_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
+# Access the otu_table and tax_table from the COPD_ps phyloseq object
+blancs_otu_table <- otu_table(blanc_ps)
+blancs_tax_table <- tax_table(blanc_ps)
+# Get the row indices of taxa with at least one non-zero value
+blancs_non_zero_taxa <- which(rowSums(blancs_otu_table > 0) > 0)
+# Extract the taxa names with ARGCluster information
+blancs_ARGCluster_names <- as.character(blancs_tax_table[blancs_non_zero_taxa, "ARGCluster"])
+# Print the ARGCluster names
+print(blancs_ARGCluster_names)
+
+# convert matrices to dataframes
+df_copd_ARGclusters <- as.data.frame(COPD_ARGCluster_names)
+df_control_ARGclusters <- as.data.frame(control_ARGCluster_names)
+df_blanc_ARGclusters <- as.data.frame(blancs_ARGCluster_names)
+
+# Export data frames to Excel files
+write.xlsx(df_copd_ARGclusters, "Output_files//Basic_resistome_explorations//df_copd_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_control_ARGclusters, "Output_files//Basic_resistome_explorations//df_control_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_blanc_ARGclusters, "Output_files//Basic_resistome_explorations//df_blanc_ARGclusters.xlsx", rowNames = FALSE)
+```
+## 16S qPCR DNA load across COPD, control and blank groups
+```{r}
+# this ps object is clustered at the 90% identity level and blanks removed
+ARGcluster.aggl.noblanks 
+
+# Subset the phyloseq object based on 'copdcaco' metadata column
+copd_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 1)
+control_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 0)
+
+# Calculate summary statistics for 'qPCR_16S_ngml' for COPD patients and controls
+copd_qPCR16S_summary <- summary(copd_data@sam_data$qPCR_16S_ngml)
+control_qPCR16S_summary <- summary(control_data@sam_data$qPCR_16S_ngml)
+
+# Check distribution in each group
+hist(copd_data@sam_data$qPCR_16S_ngml)
+hist(control_data@sam_data$qPCR_16S_ngml)
+# Distribution in both groups not normal, therefore will use Wilcoxon rank-sum test
+
+# Perform Wilcoxon rank-sum test
+wilcox_test_result <- wilcox.test(
+  copd_data@sam_data$qPCR_16S_ngml,
+  control_data@sam_data$qPCR_16S_ngml
+)
+
+# Extract the p-value
+p_value <- wilcox_test_result$p.value
+
+# Create boxplot comparing bacterial load between COPD and control groups
+plot_data <- data.frame(
+  Group = c(rep("COPD", length(copd_data@sam_data$qPCR_16S_ngml)), rep("Control", length(control_data@sam_data$qPCR_16S_ngml))),
+  Bacterial_Load = c(copd_data@sam_data$qPCR_16S_ngml, control_data@sam_data$qPCR_16S_ngml)
+)
+
+# Create the boxplot with p-value annotation
+Bacterial_load_comparison <- ggplot(plot_data, aes(x = Group, y = Bacterial_Load, fill = Group)) +
+  geom_boxplot() +
+  labs(
+    title = "Bacterial load (qPCR 16S) comparison between COPD case and control groups",
+    x = "Group",
+    y = "Bacterial load (qPCR 16S (ngml))",
+    caption = paste("Wilcoxon Rank-Sum Test p-value: ", format(p_value, digits = 3))
+  ) +
+  scale_fill_manual(values = c("cornflowerblue", "coral1")) +  # Reversed colors
+  theme_minimal()+
+  theme(plot.background = element_rect(fill = "white"))
+
+# Save the ggplot to the output_files folder
+ggsave(filename = "Output_files/Bacterial_load_comparison.png", plot = Bacterial_load_comparison, width = 8, height = 6, dpi = 300)
+```
+## Checking FPK values across COPD, control and blank groups
+```{r}
+# FPK means not corrected for 16S qPCR values (Fragments Per Kilobase of transcript (FPK))
+PS_FPK <- readRDS("Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS") # this is the PS object which is not corrected for 16S qPCR values
+
+# Remove duplicate sample (13674) from the dataset - there was an error in the choice and labelling of 1 control sample and we ended up with the same control sample being used for 2 case samples. It was mislabelled as '13674' hence was thought to be a different sample to '13764' which was already included in the dataset. Therefore we must remoce '13674' from the dataset. 
+PS_FPK <- prune_samples(sample_names(PS_FPK) != "13674", PS_FPK) 
+PS_FPK
+
+# Now agglomerate the data to ARG cluster level (as above)
+# Use tax_glom2 function - #6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
+ARGcluster.aggl.FPK <- tax_glom2(PS_FPK, taxrank=rank_names(PS_FPK)[6], NArm=TRUE)
+ARGcluster.aggl.FPK # Now 85 taxa (as before)
+
+# remove blanks
+blanks <- c("veldbl16", "veldbl3", "veldbl5")
+
+ARGcluster.aggl.FPK.noblanks <- ARGcluster.aggl.FPK
+ARGcluster.aggl.FPK.noblanks <-  prune_samples(!sample_names(ARGcluster.aggl.FPK.noblanks)%in%blanks, ARGcluster.aggl.FPK.noblanks) # Now 69 samples as we want
+
+# Now can compute FPK per individual 
+# Subset the data into COPD and control groups
+copd_data_FPK <- subset_samples(ARGcluster.aggl.FPK.noblanks, copdcaco == 1)
+control_data_FPK <- subset_samples(ARGcluster.aggl.FPK.noblanks, copdcaco == 0)
+
+# Function to calculate total FPKM for each individual
+calculate_total_FPK <- function(physeq_data) {
+  total_FPK <- rowSums(otu_table(physeq_data))
+  return(total_FPK)
+}
+
+# Calculate total FPKM for COPD and control groups
+copd_total_FPK <- calculate_total_FPK(copd_data_FPK)
+control_total_FPK <- calculate_total_FPK(control_data_FPK)
+
+summary(copd_total_FPK)
+summary(control_total_FPK)
+
+hist(copd_total_FPK)
+hist(control_total_FPK)
+# both not normal distibution - should test with wilcoxon rank sum test
+
+# Create a data frame for boxplot visualization
+plot_data_FPK <- data.frame(
+  Group = factor(c(rep("COPD", length(copd_total_FPK)), rep("Control", length(control_total_FPK)))),
+  Total_FPK = c(copd_total_FPK, control_total_FPK)
+)
+
+# Calculate summary statistics for both groups
+summary_stats <- summary(plot_data$Total_FPK)
+
+# Create boxplot with summary statistics annotation
+FPK_comparison <- ggplot(plot_data_FPK, aes(x = Group, y = Total_FPK, fill = Group)) +
+  geom_boxplot() +
+  labs(
+    title = "Total FPK Comparison between COPD and Control Groups",
+    x = "Group",
+    y = "Total FPK",
+    caption = paste("Wilcoxon Rank-Sum Test p-value:",
+                    format(wilcox.test(Total_FPK ~ Group, data = plot_data_FPK)$p.value, digits = 3))
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("COPD" = "coral1", "Control" = "cornflowerblue"))+
+  theme(plot.background = element_rect(fill = "white"))
+
+# Save the ggplot to the output_files folder
+ggsave(filename = "Output_files/FPK_comparison.png", plot = FPK_comparison, width = 8, height = 6, dpi = 300)
+```
+# Checking FPKM values
+```{r}
+# Corrected for 16S qPCR (Fragments Per Kilobase of transcript per Million mapped reads (FPKM))
+ARGcluster.aggl.noblanks # this is the fully corrected PS object (FPKM)
+
+# Subset the data into COPD and control groups
+copd_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 1)
+control_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 0)
+
+# Function to calculate total FPKM for each individual
+calculate_total_FPKM <- function(physeq_data) {
+  total_FPKM <- rowSums(otu_table(physeq_data))
+  return(total_FPKM)
+}
+
+# Calculate total FPKM for COPD and control groups
+copd_total_FPKM <- calculate_total_FPKM(copd_data)
+control_total_FPKM <- calculate_total_FPKM(control_data)
+
+summary(copd_total_FPKM)
+summary(control_total_FPKM)
+
+hist(copd_total_FPKM)
+hist(control_total_FPKM)
+# both not normal distibution - should test with wilcoxon rank sum test
+
+# Create a data frame for boxplot visualization
+plot_data_FPKM <- data.frame(
+  Group = factor(c(rep("COPD", length(copd_total_FPKM)), rep("Control", length(control_total_FPKM)))),
+  Total_FPKM = c(copd_total_FPKM, control_total_FPKM)
+)
+
+# Calculate summary statistics for both groups
+summary_stats <- summary(plot_data_FPKM$Total_FPKM)
+
+# Create boxplot with summary statistics annotation
+FPKM_comparison <- ggplot(plot_data_FPKM, aes(x = Group, y = Total_FPKM, fill = Group)) +
+  geom_boxplot() +
+  labs(
+    title = "Total FPKM Comparison between COPD and Control Groups",
+    x = "Group",
+    y = "Total FPKM",
+    caption = paste("Wilcoxon Rank-Sum Test p-value:",
+                    format(wilcox.test(Total_FPKM ~ Group, data = plot_data_FPKM)$p.value, digits = 3))
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("COPD" = "coral1", "Control" = "cornflowerblue"))+
+  theme(plot.background = element_rect(fill = "white"))
+
+# Save the ggplot to the output_files folder
+ggsave(filename = "Output_files/FPKM_comparison.png", plot = FPKM_comparison, width = 8, height = 6, dpi = 300)
+```
+## Top 10 most abundant ARG clusters
+```{r}
+# Function to calculate top 10 taxa at different levels of taxonomic identification e.g. at ARG level, ARG cluster level, AMR class level etc. 
+toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
+  if( ! is.na(samples[1]) ) {
+    pstemp = prune_samples( samples, ps)
+  } else {
+    pstemp = ps
+  }
+  pstemp = tax_glom2( pstemp, taxrank = rank, NArm=NArm )
+  pstemp = transform_sample_counts( pstemp, function(x) 100*x/sum(x) )
+
+  if( ntaxa(pstemp) < top ) {
+    top = ntaxa(pstemp)
+    warning("Number of taxa in object is less then requested top list! Reduced to ", top)
+  }
+
+  toplist = names( sort( taxa_sums(pstemp), decreasing = TRUE ) )[1:top]
+  return( toplist )
+}
+
+top10.ARGclusters.overall<- toptaxa (ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall
+
+top10.ARGclusters.overall.noblanks<- toptaxa (ARGcluster.aggl.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall.noblanks
+
+# Top 10 in copd samples 
+top10.ARGclusters.COPD<- toptaxa (COPD_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.COPD
+
+# Top 10 in control samples 
+top10.ARGclusters.control<- toptaxa (control_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.control
+
+
+# Present as actual ARG cluster names 
+tt <- data.frame( tax_table( ARGcluster.aggl ) )
+# extract the names of the ARGCluster column where the row names of tt match the taxa present in the top10.ARGclusters.noblanks, top10.ARGclusters.COPD and top10.ARGclusters.control
+
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.noblanks] 
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.COPD]
+tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.control]
+
+
+# Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
+Final.ps.top10ARGClusters <- prune_taxa(names(top10.ARGclusters.noblanks), AMRcluster90.aggl)
+
+#BARPLOT
+# Make a barplot like the AMR class level one done above, so that for COPD case and control groups, I present the relative abundance of each of the top 10 ARG classes
+bar.graphs2 <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
+  if (level == "Species") {
+    print("Error this level is too fine for amplicon sequencing")
+  } else if (var1 == "ungrouped") {
+    physeqxu <- tax_glom(physeq, level)
+    physeqxu <- transform_sample_counts(physeqxu, function(x) 100 * x/sum(x))
+    physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
+    barchartxu <- plot_bar(physeqxu, fill = level) +
+      labs(x = "COPD or control samples",
+           y = "% of top 10 ARG clusters present",
+           title = paste("Top", displayx, level, "ungrouped")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(barchartxu)
+  } else {
+    physeqm <- merge_samples(physeq, var1)
+    sample_data(physeqm)[[var1]] <- levels(sample_data(physeqm)[[var1]])
+    physeqg <- tax_glom(physeqm, level)
+    physeqg <- transform_sample_counts(physeqg, function(x) 100 * x/sum(x))
+    physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
+    grouped_bar <- plot_bar(physeqg, fill = level) +
+      labs(x = "COPD or control samples",
+           y = "% of top 10 ARG clusters present",
+           title = paste("Top", displayx, level, sep = " ")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(grouped_bar)
+  }
+}
+
+# Subset the phyloseq object to include only COPD and control samples
+ARGcluster.aggl_subset <- subset_samples(AMRcluster90.aggl, copdcaco %in% c("1", "0"))
+
+# Create a new phyloseq object with only the top 10 ARG clusters
+ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(ARGcluster.aggl_subset), decreasing = TRUE))[1:10], ARGcluster.aggl_subset)
+
+# Generate the stacked barplot at the top 10 ARG cluster level
+ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
+  ggtitle("Relative Abundance of Top 10 ARG Clusters in COPD and Control Groups") +
+  labs(fill = "ARG Cluster") +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),  # Align labels to the center of tick points
+        title = element_text(size = 17),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right") +
+  scale_x_discrete(labels = c("COPD" = "COPD", "control" = "Control"))
+
+ARGcluster.barchart
+
+ggsave("ARGcluster.barchart.png",width = 7, height = 5,dpi = 300)
+```
