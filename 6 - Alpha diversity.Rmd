@@ -1,0 +1,836 @@
+---
+title: "6 - Alpha diversity"
+output: html_notebook
+---
+**
+- Calculate several alpha diversity indices for COPD and control participants, including: Shannon, Simpson’s Evenness, Observed
+- The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. Observing the data I see that there are a maximum of 7 decimals in the dataset but alpha diversity calculations require whole numbers...
+- I will multiply by 1,000,000,000 in order to remove all these decimals to do the alpha diversity calculations. 
+**
+
+# COPD vs control
+```{r}
+Final.ps # this is the PS object which has been corrected but not clustered at the 90% identity level
+Final.ps.multiplybillion <- Final.ps
+# The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. There are a maximum of 7 decimals in the dataset but alpha diversity calculations require whole numbers...multiply by 1,000,000,000 in order to remove all these decimals to do the alpha diversity calculations. 
+Final.ps.multiplybillion@otu_table@.Data <- (Final.ps.multiplybillion@otu_table@.Data)*1000000000 
+
+# Rename sample data codes
+Final.ps.multiplybillion@sam_data$copdcaco <- revalue(Final.ps.multiplybillion@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blanc'= 'blank'))
+# Plot alpha diversity measures
+plot_richness(Final.ps.multiplybillion, measures=c("Shannon", "Simpson","Observed"))
+# Create a scatterplot with color
+mycols3 <- c("COPD"="orange", "control"="cornflowerblue", "blank"="green3")
+Alphadiversity.scatter.colour <- plot_richness(Final.ps.multiplybillion, x="copdcaco", measures=c("Shannon", "Simpson","Observed"), color="copdcaco")
+Alphadiversity.scatter.colour + scale_color_manual(values = mycols3, aesthetics = c("color", "fill"))
+
+# Calculate alpha diversity tables
+Shannon.table <- microbiome::alpha(Final.ps.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+SimpsonEvenness.table <- microbiome::alpha(Final.ps.multiplybillion, (index = "Simpson"), zeroes = TRUE)
+Observed.table <-  microbiome::alpha(Final.ps.multiplybillion, (index = "Observed"), zeroes = TRUE)
+
+# Add diversity tables to the metadata
+sample_data(Final.ps.multiplybillion)$shannon <- Shannon.table$diversity_shannon
+sample_data(Final.ps.multiplybillion)$SimpsonEvenness <- SimpsonEvenness.table$evenness_simpson
+sample_data(Final.ps.multiplybillion)$Observed <- Observed.table$observed
+
+# Create histograms of diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(Final.ps.multiplybillion)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# Check normality of the distributions
+shapiro.test(sample_data(Final.ps.multiplybillion)$shannon)
+shapiro.test(sample_data(Final.ps.multiplybillion)$SimpsonEvenness)
+shapiro.test(sample_data(Final.ps.multiplybillion)$Observed)
+
+# Shannon and Simpson are not normally distributed, Observed appears normally distributed
+
+# Create boxplots for COPD/control/blanks
+metadata.final.ps.billion <- sample_data(Final.ps.multiplybillion)
+# Make the 4 boxplots
+par(mfrow = c(2, 2))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = shannon )) + geom_boxplot(fill= c("cornflowerblue","orange", "green3"))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = Observed)) + geom_boxplot(fill= c("cornflowerblue","orange", "green3"))
+ggplot(metadata.final.ps.billion, aes(x = copdcaco, y = SimpsonEvenness))+ geom_boxplot(fill= c("cornflowerblue","orange", "green3"))
+
+# Remove blanks
+# Now I should exclude the blanks and perform the analyses again - blanks will affect any statistical tests 
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+head(sample.names(Final.ps.multiplybillion))
+Final.ps.multiplybillion.noblanks <-  prune_samples(!sample_names(Final.ps.multiplybillion)%in%blancs, Final.ps.multiplybillion)
+
+# Plot alpha diversity measures
+plot_richness(Final.ps.multiplybillion.noblanks, x="copdcaco", measures=c("Shannon", "Chao1", "Observed", "Simpson", "Evenness"))
+# Add colour to the scatterplot
+mycols4 <- c("COPD"="orange", "control"="cornflowerblue")
+Alphadiversity.scatter.noblanks.colour <- plot_richness(Final.ps.multiplybillion.noblanks, x="copdcaco", measures=c("Observed", "Chao1", "Shannon", "Simpson"), color="copdcaco")
+Alphadiversity.scatter.noblanks.colour + scale_color_manual(values = mycols4, aesthetics = c("color", "fill"))
+
+# Create histograms of diversity scores
+par(mfrow = c(2, 2))
+hist(sample_data(Final.ps.multiplybillion.noblanks)$shannon, main="Shannon diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion.noblanks)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
+hist(sample_data(Final.ps.multiplybillion.noblanks)$Observed, main="Observed diversity", xlab="", breaks=15)
+
+# check normality of these distributions across all the samples
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$shannon)
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$SimpsonEvenness)
+shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$Observed)
+# Shannon appears normally distributed but Simpson and Observed are not 
+
+# Create a dataframe for the sample data in the PS object 
+metadata.final.ps.billion.noblanks <- sam_data(Final.ps.multiplybillion.noblanks)
+metadata.final.ps.billion.noblanks$copdcaco <- revalue(metadata.final.ps.billion.noblanks$copdcaco, c("control"="Control"))
+
+# Create boxplots for COPD & controls 
+Shannon.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = shannon)) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Shannon diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
+
+
+Simpson.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Simpson Evenness diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
+
+Observed.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = Observed)) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  theme(
+    axis.title = element_text(size = 20),
+    axis.text = element_text(size = 20),
+    legend.position = "none"  # This line attempts to remove the legend
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Study population") +
+  ylab("Observed diversity index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange"))
+
+
+
+Shannon.diversity.plot
+Simpson.diversity.plot
+Observed.diversity.plot
+```
+## Calculate alpha diversity difference
+```{r}
+# Compare alpha diversity of COPD and control with a t-test or Mann-Whitney U test 
+
+# t-tests make the following assumptions: 
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+# 3: The two populations are normally distributed
+
+# Wilcoxon rank sum test makes the following assumptions:
+# 1: The two samples are independent of one another
+# 2: homogeneity of variance assumption
+
+# Therefore I will use t-test for shannon (normally distributed) and Wilcoxon rank sum test (Mann-Whitney U) for the others. 
+
+# t-test of shannon diversity between COPD and controls 
+shannon.t.test <- t.test(metadata.final.ps.billion.noblanks$shannon~ metadata.final.ps.billion.noblanks$copdcaco)
+shannon.t.test
+# t-test appears (just) significant - i.e. there is a significant difference in shannon alpha diversity between COPD and controls
+
+# Wilcoxon rank sum (Mann-Whitney U) test of other alpha diversity measures between COPD and controls
+# Observed
+wilcox.test(metadata.final.ps.billion.noblanks$Observed~metadata.final.ps.billion.noblanks$copdcaco)
+# Simpson evenness
+wilcox.test(metadata.final.ps.billion.noblanks$SimpsonEvenness~metadata.final.ps.billion.noblanks$copdcaco)
+
+# Add t-test results to the boxplot
+Shannon.diversity.plot.pval <- Shannon.diversity.plot +  stat_compare_means(method = "t.test", size=8, label.x = 0.6, label.y = 3.25)
+Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=8, label.x = 0.6, label.y = 0.42)
+Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=8,label.x = 0.6, label.y = 100)
+
+ggsave("Output_files//Alpha_diversity//Shannon_diversity_plot.png", Shannon.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files//Alpha_diversity//Simpson_diversity_plot.png", Simpson.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files//Alpha_diversity//Observed_diversity_plot.png", Observed.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
+
+
+# variance in boxplots appears homogenous 
+# Will check formally with levene's test
+#  2: homogeneity of variance assumption
+leveneTest(y = metadata.final.ps.billion.noblanks$shannon, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$Chao1, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$Observed, group = metadata.final.ps.billion.noblanks$copdcaco)
+leveneTest(y = metadata.final.ps.billion.noblanks$SimpsonEvenness, group = metadata.final.ps.billion.noblanks$copdcaco)
+# Yes all are non-significant- i.e. all homogeneous 
+```
+# Livestock exposure
+```{r}
+Final.ps.noblanks.exp.multiplybillion <- Final.ps.noblanks.exp
+Final.ps.noblanks.exp.multiplybillion@otu_table@.Data <- (Final.ps.noblanks.exp.multiplybillion@otu_table@.Data)*1000000000
+head(Final.ps.noblanks.exp.multiplybillion@otu_table@.Data)
+
+# Add in the copdcaco data to this new ps object 
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco<-Final.ps.noblanks@sam_data$copdcaco
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco
+# Firstly I will rename the codes "1" & "0" as COPD & control respectively so that the graphs are easier to interpret - directly manipulate the new PS matrix
+str(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco)
+as.factor(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco)
+Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco<- recode(Final.ps.noblanks.exp.multiplybillion@sam_data$copdcaco,"1"="COPD", "0"="control")
+
+# Create tables with alpha diversity measures
+library(microbiome)
+Shannon.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+Observed.table.exp <-  microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Observed"), zeroes = TRUE)
+Chao1.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "Chao1"), zeroes = TRUE)
+SimpsonEvenness.table.exp <- microbiome::alpha(Final.ps.noblanks.exp.multiplybillion, (index = "simpson"), zeroes = TRUE)
+
+Shannon.table.exp
+Observed.table.exp
+Chao1.table.exp
+SimpsonEvenness.table.exp
+
+#Now add the diversity tables to the metadata
+sample_data(Final.ps.noblanks.exp.multiplybillion)
+sample_data(Final.ps.noblanks.exp.multiplybillion)$shannon <- Shannon.table.exp$diversity_shannon
+sample_data(Final.ps.noblanks.exp.multiplybillion)$Chao1 <- Chao1.table.exp$chao1
+sample_data(Final.ps.noblanks.exp.multiplybillion)$Observed <- Observed.table.exp$observed
+sample_data(Final.ps.noblanks.exp.multiplybillion)$SimpsonEvenness <- SimpsonEvenness.table.exp$evenness_simpson
+#check whether this has been added to the metadata table
+head(sample_data(Final.ps.noblanks.exp.multiplybillion))
+# Yes these columns have been added to the metadata of the phyloseq object now
+
+# Now I want to relate alpha diversity with the exposure variables e.g. MinDistAnyFarm.NEG, all farms within radius, number of animals in radius, endotoxin (dispersion modelled), PM10 (dispersion modelled)
+# As all predictor variables are continuous and outcome is continuous too, I can use a linear regression model
+
+# Will run all linear regressions with all exposure proxies, set a p-value threshold and decide from there which are the important parameters to look at further
+exp.proxy.alpha.df <-  as.data.frame(Final.ps.noblanks.exp.multiplybillion@sam_data)
+colnames(exp.proxy.alpha.df)
+# rename copdcaco as 0 and 1 
+exp.proxy.alpha.df$copdcaco <- factor(exp.proxy.alpha.df$copdcaco)
+exp.proxy.alpha.df$copdcaco <- recode_factor(exp.proxy.alpha.df$copdcaco, "COPD" = "1", "control" = "0")
+
+# Run the linear models
+# Start with Shannon diversity
+# I should include COPD/control status as an additional variable in the linear regression models. Potential loss of power by doing this, but doesn’t take many degrees of freedom so should include in these models.  
+
+# UNIVARIABLE alpha diversity models -  Univariable models used here as no likely confounders with these predictors. 
+
+# Univariable linear models were used for each alpha diversity index for: the general livestock predictor (I selected the variable “N distance weighted farms within 3000m” as this was most accurate representation of the general livestock-related characteristics (compared to say “min distance to farm” etc.), Dispersion modelled endotoxin and PM10,LUR-modelled microbial concentrations
+# Univariable models used here as no likely confounders with these predictors. 
+
+# General livestock related predictor 
+lm_shannon_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+lm_Observed_nAnyFarmWghtDist.3000m.sum <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$nAnyFarmWghtDist.3000m.sum + exp.proxy.alpha.df$copdcaco)
+
+summary(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+summary(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+summary(lm_Observed_nAnyFarmWghtDist.3000m.sum)
+
+# Dispersion-modelled endotoxin and PM10 concentrations
+lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$shannon~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$SimpsonEvenness~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$DISP_EUinPM10_AnnualAv_WP99.5 + exp.proxy.alpha.df$copdcaco)
+lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5 <- lm(exp.proxy.alpha.df$Observed~exp.proxy.alpha.df$DISP_PM10CONC_AnnualAv_WP99.5+ exp.proxy.alpha.df$copdcaco)
+
+summary(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+summary(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+summary(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+summary(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)
+
+# SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
+# I previously ran these linear models - see other R notebook "LUR_modelling.Rmd"
+lm_shannon_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_shannon_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$shannon~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+lm_simpeveness_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_simpeveness_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$SimpsonEvenness~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+lm_observed_SLR_E.coli <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$E.coli_SLR.LUR3.estim+ SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_Staph <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$Staph_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_tetW <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$tetW_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+lm_observed_SLR_mecA <- lm(SLR.LUR.estim.alpha.df$Observed~SLR.LUR.estim.alpha.df$mecA_SLR.LUR3.estim + SLR.LUR.estim.alpha.df$copdcaco)
+
+summary(lm_shannon_SLR_E.coli)
+summary(lm_shannon_SLR_Staph)
+summary(lm_shannon_SLR_tetW)
+summary(lm_shannon_SLR_mecA)
+
+summary(lm_simpeveness_SLR_E.coli)
+summary(lm_simpeveness_SLR_Staph)
+summary(lm_simpeveness_SLR_tetW)
+summary(lm_simpeveness_SLR_mecA)
+
+summary(lm_observed_SLR_E.coli)
+summary(lm_observed_SLR_Staph)
+summary(lm_observed_SLR_tetW)
+summary(lm_observed_SLR_mecA)
+
+
+# MULTIVARIABLE alpha diversity models
+# Using a multivariable model for the distance weighted animals (to correct for different livestock species)
+# 1000m buffer animals 
+lm_shannon_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$shannon ~
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+                             
+lm_simpson_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$SimpsonEvenness ~ 
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+
+lm_observed_multivariable_animals_1000m <- lm(exp.proxy.alpha.df$Observed ~ 
+                                exp.proxy.alpha.df$copdcaco +
+                                  exp.proxy.alpha.df$npigsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.1000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.1000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.1000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.1000m.sum)
+
+# 3000m buffer animals 
+lm_shannon_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$shannon ~
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+
+lm_simpson_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$SimpsonEvenness ~ 
+                                exp.proxy.alpha.df$copdcaco + 
+                                exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+
+lm_observed_multivariable_animals_3000m <- lm(exp.proxy.alpha.df$Observed ~ 
+                               exp.proxy.alpha.df$copdcaco+ 
+                                 exp.proxy.alpha.df$npigsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$npoultryWghtDist.3000m.sum + 
+                                exp.proxy.alpha.df$ncowsWghtDist.3000m.sum+ 
+                                exp.proxy.alpha.df$nhorsesWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$ngoatsWghtDist.3000m.sum+
+                                exp.proxy.alpha.df$nsheepWghtDist.3000m.sum)
+                             
+
+# Summary of these multiple linear regression models 
+# 1000m buffer
+summary(lm_shannon_multivariable_animals_1000m)
+summary(lm_simpson_multivariable_animals_1000m)
+summary(lm_observed_multivariable_animals_1000m)
+# 3000m buffer
+summary(lm_shannon_multivariable_animals_3000m)
+summary(lm_simpson_multivariable_animals_3000m)
+summary(lm_observed_multivariable_animals_3000m)
+
+# Create a data table using table1 package to summarise the linear regression results 
+# Factor the basic variables that we're interested in
+library(sjPlot)
+# Data table for simple linear regression models
+# General livestock exposure
+tab_model(lm_shannon_nAnyFarmWghtDist.3000m.sum, lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum, lm_Observed_nAnyFarmWghtDist.3000m.sum, auto.label = FALSE, pred.labels = c("(Intercept)", "N of distance weighted farms within 3000m (any type)", "COPD case vs. control"))
+
+# Data table for simple linear regression models
+# Dispersion modelled endotoxin and PM10
+summary(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+tab_model(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5, lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5, lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5, auto.label = FALSE, pred.labels = c("(Intercept)", "Dispersion modelled endotoxin concentration", "COPD case vs. control"))
+tab_model(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5,lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5, lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5, auto.label = FALSE, pred.labels = c("(Intercept)", "Dispersion modelled PM10 concentration", "COPD case vs. control"))
+
+# Data table for multiple linear regression models
+tab_model(lm_shannon_multivariable_animals_1000m)
+table_lm_shannon_multivariable_animals_1000m <- tab_model(lm_shannon_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_simpson_multivariable_animals_1000m <- tab_model(lm_simpson_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_observed_multivariable_animals_1000m <- tab_model(lm_observed_multivariable_animals_1000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 1000m","N of distance weighted poultry within 1000m", "N of distance weighted cows within 1000m", "N of distance weighted horses within 1000m", "N of distance weighted goats within 1000m", "N of distance weighted sheep within 1000m"))
+table_lm_shannon_multivariable_animals_3000m <- tab_model(lm_shannon_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+table_lm_simpson_multivariable_animals_3000m <- tab_model(lm_simpson_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+table_lm_observed_multivariable_animals_3000m <- tab_model(lm_observed_multivariable_animals_3000m, auto.label = FALSE, pred.labels = c("Intercept", "COPD case vs.control", "N of distance weighted pigs within 3000m","N of distance weighted poultry within 3000m", "N of distance weighted cows within 3000m", "N of distance weighted horses within 3000m", "N of distance weighted goats within 3000m", "N of distance weighted sheep within 3000m"))
+
+
+# Checking assumptions of multiple linear regression models
+# The four key assumptions are: Linearity of the relationship between y and its explanatory variables, Independence of variables where explanatory variables are not highly correlated with each other, Normal distribution of residuals, Homoscedasticity or equal variance of residuals
+
+# R has a set of built in regression diagnostic plots (4 in total) set of diagnostics plots
+# Checking assumptions of simple linear regression models
+{par(mfrow= c(2,2))
+plot(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+plot(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+plot(lm_Observed_nAnyFarmWghtDist.3000m.sum)}
+
+{par(mfrow= c(2,2))
+plot(lm_shannon_SLR_E.coli)
+plot(lm_shannon_SLR_Staph)
+plot(lm_shannon_SLR_tetW)
+plot(lm_shannon_SLR_mecA)
+plot(lm_simpeveness_SLR_E.coli)
+plot(lm_simpeveness_SLR_Staph)
+plot(lm_simpeveness_SLR_tetW)
+plot(lm_simpeveness_SLR_mecA)
+plot(lm_observed_SLR_E.coli)
+plot(lm_observed_SLR_Staph)
+plot(lm_observed_SLR_tetW)
+plot(lm_observed_SLR_mecA)}
+
+{par(mfrow= c(2,2))
+plot(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)}
+
+# Checking assumptions of multiple linear regression models
+{par(mfrow= c(2,2))
+plot(lm_shannon_multivariable_animals_1000m) 
+plot(lm_simpson_multivariable_animals_1000m)
+plot(lm_observed_multivariable_animals_1000m) 
+plot(lm_shannon_multivariable_animals_3000m)
+plot(lm_simpson_multivariable_animals_3000m)
+plot(lm_observed_multivariable_animals_3000m)}
+
+# First plot shows whether there are non-linear relationships between X and Y - if the red lines lies on the straight dotted line then assumptions are met of linearity. A horizontal line with no patterns indicates a linear relationship.Residuals should be evenly spread around the line - in my case we can see 2 distinct lines of data in most plots due to the dichotomous (COPD case/control) variable that is in the model.
+# Q-Q plot shows whether our residuals are normally distributed - they should lie on the diagonal line - doesn't have to be perfect - if it curves off a lot in the centre this is a warning sign - normally they tail away a bit 
+# Scale-location plot tells us if the residuals are evenly spread across the predictors. This is the assessment of homoscedasticity - you want to see a pretty much horizontal line. 
+# Residuals vs leverage plot allows us to identify any potential influential points - we are interested in points in either the top right or bottom right corners - problematic cases will fall within dotted lines that are automatically on the plot making it easy to spot
+
+# Histograms to look graphically at the distribution of the residuals
+{par(mfrow= c(2,2))
+plot(lm_shannon_SLR_E.coli)
+plot(lm_shannon_SLR_Staph)
+plot(lm_shannon_SLR_tetW)
+plot(lm_shannon_SLR_mecA)
+plot(lm_simpeveness_SLR_E.coli)
+plot(lm_simpeveness_SLR_Staph)
+plot(lm_simpeveness_SLR_tetW)
+plot(lm_simpeveness_SLR_mecA)
+plot(lm_observed_SLR_E.coli)
+plot(lm_observed_SLR_Staph)
+plot(lm_observed_SLR_tetW)
+plot(lm_observed_SLR_mecA)}
+plot(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+plot(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)}
+plot(lm_shannon_multivariable_animals_1000m) 
+plot(lm_simpson_multivariable_animals_1000m)
+plot(lm_observed_multivariable_animals_1000m) 
+plot(lm_shannon_multivariable_animals_3000m)
+plot(lm_simpson_multivariable_animals_3000m)
+plot(lm_observed_multivariable_animals_3000m)}
+
+hist(lm_shannon_nAnyFarmWghtDist.3000m.sum$residuals)
+hist(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum$residuals) 
+hist(lm_Observed_nAnyFarmWghtDist.3000m.sum$residuals)
+hist(lm_shannon_SLR_E.coli$residuals)
+hist(lm_shannon_SLR_Staph$residuals) 
+hist(lm_shannon_SLR_tetW$residuals)
+hist(lm_shannon_SLR_mecA$residuals)
+hist(lm_simpeveness_SLR_E.coli$residuals)
+hist(lm_simpeveness_SLR_Staph$residuals)
+hist(lm_simpeveness_SLR_tetW$residuals)
+hist(lm_simpeveness_SLR_mecA$residuals)
+hist(lm_observed_SLR_E.coli$residuals)
+hist(lm_observed_SLR_Staph$residuals)
+hist(lm_observed_SLR_tetW$residuals)
+hist(lm_observed_SLR_mecA$residuals)
+hist(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5$residuals)
+hist(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5$residuals)
+hist(lm_shannon_multivariable_animals_1000m$residuals) 
+hist(lm_simpson_multivariable_animals_1000m$residuals)
+hist(lm_observed_multivariable_animals_1000m$residuals) 
+hist(lm_shannon_multivariable_animals_3000m$residuals)
+hist(lm_simpson_multivariable_animals_3000m$residuals)
+hist(lm_observed_multivariable_animals_3000m$residuals)
+
+# Durbin watson test is used to detect the presence of autocorrelation in the residuals
+library(car)
+durbinWatsonTest(lm_shannon_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_Observed_nAnyFarmWghtDist.3000m.sum)
+durbinWatsonTest(lm_shannon_SLR_E.coli)
+durbinWatsonTest(lm_shannon_SLR_Staph)
+durbinWatsonTest(lm_shannon_SLR_tetW)
+durbinWatsonTest(lm_shannon_SLR_mecA)
+durbinWatsonTest(lm_simpeveness_SLR_E.coli)
+durbinWatsonTest(lm_simpeveness_SLR_Staph)
+durbinWatsonTest(lm_simpeveness_SLR_tetW)
+durbinWatsonTest(lm_simpeveness_SLR_mecA)
+durbinWatsonTest(lm_observed_SLR_E.coli)
+durbinWatsonTest(lm_observed_SLR_Staph)
+durbinWatsonTest(lm_observed_SLR_tetW)
+durbinWatsonTest(lm_observed_SLR_mecA)
+durbinWatsonTest(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)
+durbinWatsonTest(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)
+durbinWatsonTest(lm_shannon_multivariable_animals_1000m)
+durbinWatsonTest(lm_simpson_multivariable_animals_1000m)
+durbinWatsonTest(lm_observed_multivariable_animals_1000m)
+durbinWatsonTest(lm_shannon_multivariable_animals_3000m)
+durbinWatsonTest(lm_simpson_multivariable_animals_3000m)
+durbinWatsonTest(lm_observed_multivariable_animals_3000m)
+
+# None come out as significant - no significant autocorrelation detected
+# Cook's distance 
+library(olsrr)
+{par(mfrow=c(5,5))
+ols_plot_cooksd_bar(lm_shannon_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_nAnyFarmWghtDist.3000m.sum, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpeveness_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_E.coli, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_Staph, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_tetW, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_SLR_mecA, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpson_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_multivariable_animals_1000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_shannon_multivariable_animals_3000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_simpson_multivariable_animals_3000m, print_plot = TRUE)
+ols_plot_cooksd_bar(lm_observed_multivariable_animals_3000m, print_plot = TRUE)}
+
+cooks.distance(lm_shannon_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_simpsonevenness_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_Observed_nAnyFarmWghtDist.3000m.sum)>1
+cooks.distance(lm_shannon_SLR_E.coli)>1
+cooks.distance(lm_shannon_SLR_Staph)>1
+cooks.distance(lm_shannon_SLR_tetW)>1
+cooks.distance(lm_shannon_SLR_mecA)>1
+cooks.distance(lm_simpeveness_SLR_E.coli)>1
+cooks.distance(lm_simpeveness_SLR_Staph)>1
+cooks.distance(lm_simpeveness_SLR_tetW)>1
+cooks.distance(lm_simpeveness_SLR_mecA)>1
+cooks.distance(lm_observed_SLR_E.coli)>1
+cooks.distance(lm_observed_SLR_Staph)>1
+cooks.distance(lm_observed_SLR_tetW)>1
+cooks.distance(lm_observed_SLR_mecA)>1
+cooks.distance(lm_shannon_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_shannon_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_simpsonevenness_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_simpsonevenness_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_Observed_DISP_EUinPM10_AnnualAv_WP99.5)>1
+cooks.distance(lm_Observed_DISP_PM10CONC_AnnualAv_WP99.5)>1
+cooks.distance(lm_shannon_multivariable_animals_1000m)>1
+cooks.distance(lm_simpson_multivariable_animals_1000m)>1
+cooks.distance(lm_observed_multivariable_animals_1000m)>1
+cooks.distance(lm_shannon_multivariable_animals_3000m)>1
+cooks.distance(lm_simpson_multivariable_animals_3000m)>1
+cooks.distance(lm_observed_multivariable_animals_3000m)>1
+
+# In each regression model there are several points with a cook's D > 4/n threshold (in our case n=69, therefore threshold = 0.058). 
+# Not many points have Cook's Distance > 1 though
+```
+
+# LUR and RF-modelled livestock exposures
+```{r} 
+Final.ps.noblanks <- readRDS("C://Users//Cornu003//OneDrive - Universiteit Utrecht//Documents//Epidemiology MSc 2020//Research Project//ResCap//ResCap_2020_v4_rarefied//Final.ps.noblanks.rds")
+Final.ps.noblanks@sam_data # we want to replace this current sample data in the ps object.# copy over original ps object and create a new one
+Final.ps.noblanks.LUR.RF.estimates <- Final.ps.noblanks
+# Add the modelled exposure data to the ps object
+sample_data(Final.ps.noblanks.LUR.RF.estimates) <- sample_data(LUR_RF_residential_predictions)
+# Add the copdcaco status to the sample data of the ps object 
+Final.ps.noblanks.LUR.RF.estimates@sam_data$copdcaco <- Final.ps.noblanks@sam_data$copdcaco 
+# Check the ps sample data
+Final.ps.noblanks.LUR.RF.estimates@sam_data
+
+Final.ps.noblanks.LUR.RF.estimates.multiplybillion <- Final.ps.noblanks.LUR.RF.estimates
+Final.ps.noblanks.LUR.RF.estimates.multiplybillion@otu_table@.Data <- (Final.ps.noblanks.LUR.RF.estimates.multiplybillion@otu_table@.Data)*1000000000
+head(Final.ps.noblanks.LUR.RF.estimates.multiplybillion@otu_table@.Data)
+
+# Create tables with alpha diversity measures
+library(microbiome)
+Shannon <- microbiome::alpha(Final.ps.noblanks.LUR.RF.estimates.multiplybillion, (index = "Shannon"), zeroes = TRUE)
+Simpson_evenness <- microbiome::alpha(Final.ps.noblanks.LUR.RF.estimates.multiplybillion, (index = "simpson"), zeroes = TRUE)
+Observed_richness <-  microbiome::alpha(Final.ps.noblanks.LUR.RF.estimates.multiplybillion, (index = "Observed"), zeroes = TRUE)
+Simpson_evenness$evenness_simpson
+
+#Now add the diversity tables to the metadata
+sample_data(Final.ps.noblanks.LUR.RF.estimates.multiplybillion)$Shannon <- Shannon$diversity_shannon
+sample_data(Final.ps.noblanks.LUR.RF.estimates.multiplybillion)$Simpson_Evenness <- Simpson_evenness$evenness_simpson
+sample_data(Final.ps.noblanks.LUR.RF.estimates.multiplybillion)$Observed_richness <- Observed_richness$observed
+
+#check whether this has been added to the metadata table
+sample_data(Final.ps.noblanks.LUR.RF.estimates.multiplybillion) # YES
+
+LUR_RF_exposure_alphadiversity_df <- as.data.frame(Final.ps.noblanks.LUR.RF.estimates.multiplybillion@sam_data)
+
+# Alpha diversity with the LUR-modelled concentrations
+lm_shannon_E.coli_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$E.coli_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_Staph_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_tetW_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$tetW_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_mecA_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$mecA_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+lm_simpeveness_E.coli_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$E.coli_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_Staph_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_tetW_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$tetW_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_mecA_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$mecA_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+lm_observed_E.coli_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$E.coli_LUR_estimates+ LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_Staph_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_tetW_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$tetW_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_mecA_LUR <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$mecA_LUR_estimates + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+summary(lm_shannon_E.coli_LUR)
+summary(lm_shannon_Staph_LUR)
+summary(lm_shannon_tetW_LUR)
+summary(lm_shannon_mecA_LUR)
+
+summary(lm_simpeveness_E.coli_LUR)
+summary(lm_simpeveness_Staph_LUR)
+summary(lm_simpeveness_tetW_LUR)
+summary(lm_simpeveness_mecA_LUR)
+
+summary(lm_observed_E.coli_LUR)
+summary(lm_observed_Staph_LUR)
+summary(lm_observed_tetW_LUR)
+summary(lm_observed_mecA_LUR)
+
+# Alpha diversity with the RF-modelled concentrations
+lm_shannon_E.coli_RF <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$E.coli_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_Staph_RF <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$Staph_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_tetW_RF <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$tetW_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_shannon_mecA_RF <- lm(LUR_RF_exposure_alphadiversity_df$Shannon~LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+lm_simpeveness_E.coli_RF <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$E.coli_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_Staph_RF <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$Staph_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_tetW_RF <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$tetW_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_simpeveness_mecA_RF <- lm(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness~LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+lm_observed_E.coli_RF <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$E.coli_RF_predictions+ LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_Staph_RF <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$Staph_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_tetW_RF <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$tetW_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+lm_observed_mecA_RF <- lm(LUR_RF_exposure_alphadiversity_df$Observed~LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions + LUR_RF_exposure_alphadiversity_df$copdcaco)
+
+summary(lm_shannon_E.coli_RF)
+summary(lm_shannon_Staph_RF)
+summary(lm_shannon_tetW_RF)
+summary(lm_shannon_mecA_RF)
+
+summary(lm_simpeveness_E.coli_RF)
+summary(lm_simpeveness_Staph_RF)
+summary(lm_simpeveness_tetW_RF)
+summary(lm_simpeveness_mecA_RF)
+
+summary(lm_observed_E.coli_RF)
+summary(lm_observed_Staph_RF)
+summary(lm_observed_tetW_RF)
+summary(lm_observed_mecA_RF)
+
+# Combine all linear regression models into one dataframe
+All_LUR_RF_models <- list(lm_shannon_E.coli_LUR, lm_shannon_Staph_LUR, lm_shannon_tetW_LUR, lm_shannon_mecA_LUR, lm_simpeveness_E.coli_LUR, lm_simpeveness_Staph_LUR, lm_simpeveness_tetW_LUR, lm_simpeveness_mecA_LUR, lm_observed_E.coli_LUR, lm_observed_Staph_LUR, lm_observed_tetW_LUR, lm_observed_mecA_LUR,lm_shannon_E.coli_RF, lm_shannon_Staph_RF, lm_shannon_tetW_RF, lm_shannon_mecA_RF, lm_simpeveness_E.coli_RF, lm_simpeveness_Staph_RF, lm_simpeveness_tetW_RF, lm_simpeveness_mecA_RF, lm_observed_E.coli_RF, lm_observed_Staph_RF, lm_observed_tetW_RF, lm_observed_mecA_RF)
+# Print results of all regression models
+combined_results <- map_dfr(All_LUR_RF_models, tidy)
+write.csv(combined_results, file = "Output_files//Alpha_diversity//Alpha_diversity_LUR_RF_microbial_exposure_results.csv", row.names = FALSE)
+
+# Assumption checking
+# Checking assumptions of multiple linear regression models
+# The four key assumptions are: Linearity of the relationship between y and its explanatory variables, Independence of variables where explanatory variables are not highly correlated with each other, Normal distribution of residuals, Homoscedasticity or equal variance of residuals
+
+# R has a set of built in regression diagnostic plots (4 in total) set of diagnostics plots
+# Checking assumptions of simple linear regression models
+{par(mfrow= c(2,2))
+plot( lm_shannon_E.coli_LUR)
+plot( lm_shannon_Staph_LUR)
+plot( lm_shannon_tetW_LUR)
+plot( lm_shannon_mecA_LUR)
+plot( lm_simpeveness_E.coli_LUR)
+plot( lm_simpeveness_Staph_LUR)
+plot( lm_simpeveness_tetW_LUR)
+plot( lm_simpeveness_mecA_LUR)
+plot( lm_observed_E.coli_LUR)
+plot( lm_observed_Staph_LUR)
+plot( lm_observed_tetW_LUR)
+plot( lm_observed_mecA_LUR)
+plot( lm_shannon_E.coli_RF)
+plot( lm_shannon_Staph_RF)
+plot( lm_shannon_tetW_RF)
+plot( lm_shannon_mecA_RF)
+plot( lm_simpeveness_E.coli_RF)
+plot( lm_simpeveness_Staph_RF)
+plot( lm_simpeveness_tetW_RF)
+plot( lm_simpeveness_mecA_RF)
+plot( lm_observed_E.coli_RF)
+plot( lm_observed_Staph_RF)
+plot( lm_observed_tetW_RF)
+plot( lm_observed_mecA_RF)}
+
+# Durbin watson test is used to detect the presence of autocorrelation in the residuals
+library(car)
+durbinWatsonTest( lm_shannon_E.coli_LUR)
+durbinWatsonTest( lm_shannon_Staph_LUR)
+durbinWatsonTest( lm_shannon_tetW_LUR)
+durbinWatsonTest( lm_shannon_mecA_LUR)
+durbinWatsonTest( lm_simpeveness_E.coli_LUR)
+durbinWatsonTest( lm_simpeveness_Staph_LUR)
+durbinWatsonTest( lm_simpeveness_tetW_LUR)
+durbinWatsonTest( lm_simpeveness_mecA_LUR)
+durbinWatsonTest( lm_observed_E.coli_LUR)
+durbinWatsonTest( lm_observed_Staph_LUR)
+durbinWatsonTest( lm_observed_tetW_LUR)
+durbinWatsonTest( lm_observed_mecA_LUR)
+durbinWatsonTest( lm_shannon_E.coli_RF)
+durbinWatsonTest( lm_shannon_Staph_RF)
+durbinWatsonTest( lm_shannon_tetW_RF)
+durbinWatsonTest( lm_shannon_mecA_RF)
+durbinWatsonTest( lm_simpeveness_E.coli_RF)
+durbinWatsonTest( lm_simpeveness_Staph_RF)
+durbinWatsonTest( lm_simpeveness_tetW_RF)
+durbinWatsonTest( lm_simpeveness_mecA_RF)
+durbinWatsonTest( lm_observed_E.coli_RF)
+durbinWatsonTest( lm_observed_Staph_RF)
+durbinWatsonTest( lm_observed_tetW_RF)
+durbinWatsonTest( lm_observed_mecA_RF)
+# None significant - no significant autocorrelation detected
+
+# Cook's distance 
+which(cooks.distance( lm_shannon_E.coli_LUR)>1)
+which(cooks.distance(lm_shannon_Staph_LUR)>1)
+which(cooks.distance( lm_shannon_tetW_LUR)>1)
+which(cooks.distance( lm_shannon_mecA_LUR)>1)
+which(cooks.distance( lm_simpeveness_E.coli_LUR)>1)
+which(cooks.distance( lm_simpeveness_Staph_LUR)>1)
+which(cooks.distance( lm_simpeveness_tetW_LUR)>1)
+which(cooks.distance( lm_simpeveness_mecA_LUR)>1)
+which(cooks.distance( lm_observed_E.coli_LUR)>1)
+which(cooks.distance( lm_observed_Staph_LUR)>1)
+which(cooks.distance( lm_observed_tetW_LUR)>1)
+which(cooks.distance( lm_observed_mecA_LUR)>1)
+which(cooks.distance( lm_shannon_E.coli_RF)>1)
+which(cooks.distance( lm_shannon_Staph_RF)>1)
+which(cooks.distance( lm_shannon_tetW_RF)>1)
+which(cooks.distance( lm_shannon_mecA_RF)>1)
+which(cooks.distance( lm_simpeveness_E.coli_RF)>1)
+which(cooks.distance( lm_simpeveness_Staph_RF)>1)
+which(cooks.distance( lm_simpeveness_tetW_RF)>1)
+which(cooks.distance( lm_simpeveness_mecA_RF)>1)
+which(cooks.distance( lm_observed_E.coli_RF)>1)
+which(cooks.distance( lm_observed_Staph_RF)>1)
+which(cooks.distance( lm_observed_tetW_RF)>1)
+which(cooks.distance( lm_observed_mecA_RF)>1)
+# No cook's distances > 1 - no serious outliers
+
+# Extract the slope coefficient and p-value from the linear regression model
+slope_coef_simp_staph <- coef(lm_simpeveness_Staph_LUR)[2]
+names(slope_coef_simp_staph) <- NULL
+p_value_simp_staph <- summary(lm_simpeveness_Staph_LUR)$coefficients[2, 4]
+
+# Create the ggplot object with your data
+staphLUR_simpson_plot <- ggplot(LUR_RF_exposure_alphadiversity_df, aes(x = Staph_LUR_estimates, y = Simpson_Evenness)) +
+  # Customize the scatterplot points
+  geom_point(size = 4, color = "black", alpha = 0.7) +
+  # Add a regression line
+  geom_abline(intercept = coef(lm_simpeveness_Staph_LUR)[1], slope = coef(lm_simpeveness_Staph_LUR)[2],
+              color = "cornflowerblue", linetype = "dashed", linewidth = 1.5) +
+  # Add slope coefficient and p-value as annotations
+  geom_text(x = max(LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness)-0.03,
+            label = paste("Slope coefficient =", round(slope_coef_simp_staph, 4)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
+  geom_text(x = max(LUR_RF_exposure_alphadiversity_df$Staph_LUR_estimates), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness) - 0.05,
+            label = paste("p-value =", signif(p_value_simp_staph, digits = 4)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
+  # Customize x and y axis labels and title
+  labs(x = "Residential exposure to Staphylococcus (LUR-modelled) \n(gene copies/m^2)", y = "Simpson's Evenness index",
+       title = bquote(atop("Simpson's Evenness index vs. " * italic("Staphylococcus") * "exposure estimates"))) +
+  # Customize the theme (adjust the appearance of the plot)
+  theme_minimal() +
+  theme(plot.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20))
+
+# Print the plot
+print(staphLUR_simpson_plot)
+ggsave(filename = "Output_files//Alpha_diversity//staphLUR_simpson_plot.svg", plot = staphLUR_simpson_plot, device = "svg", width = 10, height = 6, units = "in")
+
+
+# lm_simpeveness_mecA_RF <- lm(Simpson_Evenness ~ mecA_RF_predictions, data = LUR_RF_exposure_alphadiversity_df)
+# Extract the slope coefficient and p-value from the linear regression model
+slope_coef <- coef(lm_simpeveness_mecA_RF)[2]
+names(slope_coef) <- NULL
+p_value <- summary(lm_simpeveness_mecA_RF)$coefficients[2, 4]
+
+# lm_simpeveness_mecA_RF <- lm(Simpson_Evenness ~ mecA_RF_predictions, data = LUR_RF_exposure_alphadiversity_df)
+# Extract the slope coefficient and p-value from the linear regression model
+slope_coef <- coef(lm_simpeveness_mecA_RF)[2]
+names(slope_coef) <- NULL
+p_value <- summary(lm_simpeveness_mecA_RF)$coefficients[2, 4]
+
+# Create the ggplot object with your data
+mecA_simpson_plot <- ggplot(LUR_RF_exposure_alphadiversity_df, aes(x = mecA_RF_predictions, y = Simpson_Evenness)) +
+  # Customize the scatterplot points
+  geom_point(size = 4, color = "black", alpha = 0.7) +
+  # Add a regression line
+  geom_abline(intercept = coef(lm_simpeveness_mecA_RF)[1], slope = coef(lm_simpeveness_mecA_RF)[2],
+              color = "cornflowerblue", linetype = "dashed", linewidth = 1.5) +
+  # Add slope coefficient and p-value as annotations
+  geom_text(x = max(LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness)-0.03,
+            label = paste("Slope coefficient =", round(slope_coef, 3)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
+  geom_text(x = max(LUR_RF_exposure_alphadiversity_df$mecA_RF_predictions), y = max(LUR_RF_exposure_alphadiversity_df$Simpson_Evenness) - 0.05,
+            label = paste("p-value =", signif(p_value, digits = 3)), color = "cornflowerblue", size = 6, hjust = 1, vjust = 1) +
+  # Customize x and y axis labels and title
+  labs(x = "Residential exposure to mecA (RF-modelled) \n(gene copies/m^2)", y = "Simpson's Evenness index",
+       title = bquote(atop("Simpson's Evenness index vs. " * italic("mec") * "A exposure estimates"))) +
+  # Customize the theme (adjust the appearance of the plot)
+  theme_minimal() +
+  theme(plot.title = element_text(size = 20),
+        axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20))
+
+# Print the plot
+print(mecA_simpson_plot)
+ggsave(filename = "Output_files/Alpha_diversity/mecA_simpson_plot.svg", plot = mecA_simpson_plot, device = "svg", width = 10, height = 6, units = "in")
+```
