@@ -1,0 +1,137 @@
+---
+title: "ARG mapping with ResFinder and ARG clustering"
+output: html_notebook
+---
+
+Data were pre-processed from individual excel sheets (metadata and 'otu data') and the refined ARG clustering spreadsheet (ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b)
+
+# ARG mapping
+```{bash, eval=FALSE}
+# Raw ARG mapping was done on Resfinder version 2020-01-27. ARG clustering is also based on this. 
+# Running script in bash 02a_Resfinder_Serie_MergedSamples_MinLen30mapping_semiperfectmode.sh 
+
+#!/bin/bash
+# map quite stringent to resfinder genes
+# is a GLOBAL aligner so a read only matching a very short part will not be found significant
+# Matches should be at least 40 bases. THIS CANNOT BE DONE DIRECTLY in bbmap!!
+# Needs subsequent filtering! i.e. use output RPKM (do not use fpkm/rpkm) but filter on bases column >=40
+# (uses minlength30 prior clipped reads) but min match length should filter abbaraent mapping of i.e. 16 bp...
+# alex.bossers@wur.nl
+
+INDIR=01_cleaned_reads
+OUTMAINDIR=02a_resfinder_raw
+
+mkdir -p $OUTMAINDIR # create a directory named "02a_resfinder_raw"- the "-p"option ensures that any necessary parent directories are also created if they don't exist. Overall this above code creates a new directory names "02a_resfinder_raw and ensure that it exists before any further actions are taken in the script. 
+
+# reference=/mnt/DataBIG/DataBases/Resfinder/20161102/resfinder_all_complete_UNIQ2_2016nov.fasta
+# The script below is a shell script written in Bashand performs sequence mapping operation on paired-end reads using the BBMap tool
+# The script starts by setting the location of the reference genome file in the variable $reference and the extension of the input files in the variable $extension
+# Then, for each file in the directory specified by the variable $INDIR that matches the pattern "*_R1.$extension", the script performs the following actions:
+##Print the name of the file to the console using the echo command.
+##Extract the sample name from the filename using the basename command and save it in the variable $sample.
+##Set the names of the input files for the mapping operation in the variables $infile1 and $infile2.
+##Create a new output directory with the sample name in the directory specified by $OUTMAINDIR using the mkdir -p command.
+##Print the current date to the console using the date command.
+##Run the BBMap tool with various options including:
+##The location of the input files specified in $infile1 and $infile2.
+##The location of the reference genome specified in $reference.
+##The option semiperfectmode=t which allows for more mismatches in the read alignment.
+##The output files for the mapped and unmapped reads, coverage statistics, and scaffold statistics specified by the options outm, outu, rpkm, covstats, bincov, and scafstats, respectively.
+##Redirect the standard error output of the BBMap command to the standard output stream by adding 2>&1 to the command (which is commented out in the script).
+##End the for loop.
+reference=Resfinder/Resfinder_20200127_all_genes.uniq.fasta 
+extension=fastq.adapterQualClip.minlen30.fastq.gz
+
+for file in $INDIR/*_R1.$extension
+ do
+	echo $file
+	sample=`basename $file _R1.$extension`
+	infile1=$sample\_R1.$extension
+	infile2=$sample\_R2.$extension
+
+	OUTDIR=$OUTMAINDIR/$sample
+	mkdir -p $OUTDIR
+
+	date
+
+	# do actual mapping in SEMIperfectModus
+	bbmap.sh -Xmx59g \
+			 in1=$INDIR/$infile1 in2=$INDIR/$infile2 out=/dev/null ref=$reference \
+			 semiperfectmode=t \
+			 outm=$OUTDIR/mapped.fq.gz \
+			 outu=$OUTDIR/unmapped.fq.gz \
+			 rpkm=$OUTDIR/mapped.rpkm \
+			 covstats=$OUTDIR/constats.txt bincov=$OUTDIR/bincov.txt \
+			 scafstats=$OUTDIR/scafstats.txt
+			 # add 2>&1 to wrapper cmd
+ done
+
+date
+echo "All done!"
+#finished
+```
+## Raw data processing
+```{bash, eval=FALSE}
+# Raw mapping data was pre-processed in bash using script 02c_rename.sh and subsequently run through 02e_preprocess_data.sh as follows to R long tabular format.
+
+#!/bin/bash
+#rename to shorter Alex
+
+indir=02b_resfinder_rpkm_scafstats
+outdir=02c_Samples_renamed01
+mkdir -p $outdir
+
+cp -v $indir/*.rpkm $outdir/
+
+cd $outdir
+for i in HGJ*.rpkm
+ do echo $i; 
+    j=`echo $i | sed -r -e "s/^HGJF5DSXY_([0-9\-]+).+/\1.rpkm/"`;
+    mv $i $j;
+ done
+
+cd ..
+```
+## The preprocessing script
+```{bash, eval=FALSE}
+#!/bin/bash
+
+# script 02e_preprocess_data.sh
+
+# process the rpkm files to
+# keep the total number of reads for that library
+# keep gene, length, and readcount only of counts > 0
+#
+# For ResCap calc of 
+#
+# alex.bossers@wur.nl
+
+INDIR="02d_Samples_renamed02"
+OUTFILE="02e_TotalResfinderMapped_v3.tab"
+echo -e "SampleName\tTotalReadcounts\tResfinderReadcounts\tARGname\tARGlength\tMappedCount\tFPK_alx" > $OUTFILE
+
+date
+
+for rpkm in $INDIR/*.rpkm
+ do
+	echo $rpkm
+	sample=`basename $rpkm .rpkm`
+	echo $sample
+
+	totalCounts=`head $rpkm | grep -P "^#Reads" | sed -r -e "s/^#\S+\s+([0-9]+).*/\1/"`
+	echo "Total counts: $totalCounts"
+	mappedCounts=`head $rpkm | grep -P "^#Mapped" | sed -r -e "s/^#\S+\s+([0-9]+).*/\1/"`
+	echo "Resfinder mapped counts: $mappedCounts"
+
+	awk -F '\t' '$5 > 0 && $5 != "Reads"' $rpkm | \
+		awk -F '\t' '{ print "'$sample'\t'$totalCounts'\t'$mappedCounts'" "\t" $1 "\t" $2 "\t" $5 "\t" ( $5 / $2 ) * 10^3 }' | \
+		tee -a $OUTFILE
+
+ done
+
+date
+#echo "Removing RESF00xxx codes..."
+#echo "Removing spaces at end of ARGname..."
+#cat $OUTFILE | sed -r -e "s/RESF[0-9]+ //" -e "s/ //" >$OUTFILE.clean.tab
+echo "All done!"
+```

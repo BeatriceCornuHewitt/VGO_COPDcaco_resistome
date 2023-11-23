@@ -1,0 +1,56 @@
+---
+title: "Wilcoxon rank sum test for DA analysis"
+output: html_notebook
+---
+
+# Wilcoxon rank sum test 
+```{r}
+# Since all DA analysis methods assume compositionality and perform a log transformation, we are comparing relative abundances of the ARGs between the groups. 
+# Instead by using Wilcoxon rank sum test we can compare absolute abundances of the ARGs because they may have different loads. 
+
+
+# Extract the normalized count data from your phyloseq object
+resistome_counts <- otu_table(Final.ps.DAanalysis.filtered.noblanks)
+
+# Extract the sample data to identify COPD cases and controls
+sample_data <- sample_data(Final.ps.DAanalysis.filtered.noblanks)
+
+# Create an empty data frame to store the test results
+results <- data.frame(Gene = character(0), TestUsed = character(0), p_value = numeric(0))
+
+# Set the significance level for the Shapiro-Wilk test
+alpha_shapiro = 0.05
+
+# Loop through each resistance gene
+for (gene in colnames(resistome_counts)) {
+  # Extract the absolute abundance data for the current gene
+  gene_data <- resistome_counts[, gene]
+  
+  # Combine the data for COPD cases and controls
+  combined_data <- c(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+  
+  # Perform the Shapiro-Wilk test
+  shapiro_test <- shapiro.test(combined_data)
+  
+  # Check the Shapiro-Wilk test p-value
+  if (shapiro_test$p.value < alpha_shapiro) {
+    # Use Wilcoxon rank-sum test if Shapiro-Wilk test is significant
+    test_result <- wilcox.test(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+    test_used <- "Wilcoxon"} else 
+      {
+    # Use t-test if Shapiro-Wilk test is not significant
+    test_result <- t.test(gene_data[sample_data$copdcaco == '1'], gene_data[sample_data$copdcaco == '0'])
+    test_used <- "t-test"}
+  
+  # Store the test result in the results data frame
+  results <- rbind(results, data.frame(Gene = gene, TestUsed = test_used, p_value = test_result$p.value))
+}
+
+# Correct for multiple testing using the Benjamini-Hochberg (FDR) method
+results$padj <- p.adjust(results$p_value, method = "fdr")
+significant_genes <- results$Gene[results$padj < 0.05] # 0 genes are significantly different when corrected for multiple testing.
+
+# View the results (sorted by adjusted p-value)
+pvals_gene_COPDvscontrol <- results[order(results$padj), ]
+```
+

@@ -1,0 +1,254 @@
+---
+title: "ANCOM-BC2 attempt"
+output: html_notebook
+---
+# COPD vs control
+## ANCOM-BC2 on filtered data (0.1% relative abundance, 15% prevalent)
+```{r}
+# Subset the tax_table to "ARGCluster"
+argcluster_tax <- tax_table(Final.ps.DAanalysis.filtered.noblanks)[, "ARGCluster"]
+rownames(argcluster_tax) <- argcluster_tax[, "ARGCluster"]
+
+# Create a new phyloseq object
+Final.ps.DAanalysis.filtered.noblanks_argclust <- phyloseq(
+  otu_table(Final.ps.DAanalysis.filtered.noblanks),
+  sample_data(Final.ps.DAanalysis.filtered.noblanks),
+  tax_table = argcluster_tax
+)
+
+# Run ANCOMBC2 analysis
+out = ancombc2(
+  data = Final.ps.DAanalysis.filtered.noblanks_argclust, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "copdcaco",
+  group = "copdcaco", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+saveRDS(out, "Output_files//Differential_abundance//ANCOMBC2_output.rds")
+
+# Differential abundance test 
+ANCOMBC2.results <- out$res
+ANCOMBC2.results$diff_copdcaco1
+ANCOMBC2.results$p_copdcaco1
+ANCOMBC2.results$q_copdcaco1
+any(ANCOMBC2.results$diff_copdcaco1 == "TRUE")
+
+saveRDS(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_results_table.rds")
+write.xlsx(ANCOMBC2.results, "Output_files//Differential_abundance//ANCOMBC2_results_table.xlsx")
+
+# Check for structural zeroes
+tab_zero = out$zero_ind
+tab_zero %>%
+    data.table(caption = "The detection of structural zeros")
+
+# N.B copdcaco = 0 (control) is used as the reference group in my case
+# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in ARG abundance. lfc_(Intercept): This column represents the LFC for each ARG  between the reference group (Intercept) and itself. In other words, it shows the estimated change in abundance or expression of each taxon within the reference group. The LFC_(Intercept) values indicate how much the abundance or expression of each ARG varies within the reference group. fc_copdcaco1: This column represents the LFC for each ARG or feature between the reference group (Intercept) and the "copdcaco1" group. It shows the estimated change in abundance or expression of each taxon when comparing the reference group to the "copdcaco1" group. A positive LFC indicates an increase in abundance or expression in the "copdcaco1" group compared to the reference group, while a negative LFC suggests a decrease. The magnitude of the LFC_(copdcaco1) values provides information about the size of the difference between these two groups.
+# se_(Intercept) and se_copdcaco1: These represent the standard errors associated with the log-fold changes for the reference group and the copdcaco1 group, respectively. The standard error provides a measure of the uncertainty associated with the LFC estimate.
+# W_(Intercept) and W_copdcaco1: These values correspond to the Wilcoxon rank-sum test statistics for the reference group and the copdcaco1 group. These statistics are used to assess the significance of differences in microbial abundance between the groups.
+# p_(Intercept) and p_copdcaco1: These represent the p-values associated with the Wilcoxon rank-sum tests for the reference group and the copdcaco1 group. A small p-value indicates that there is evidence to reject the null hypothesis, suggesting significant differences in abundance between the groups.
+# q_(Intercept) and q_copdcaco1: These values may represent adjusted p-values, often corrected for multiple comparisons. Adjusted p-values take into account the issue of conducting multiple statistical tests and help control the family-wise error rate.
+# diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
+
+# None come out as significant. 
+
+# Produce horizontal bar plots 
+# Create a data frame with the relevant columns from ANCOMBC2.results
+
+data_ANCOMBC2 <- data.frame(
+  ARGCluster = rownames(tax_table(Final.ps.DAanalysis.filtered.noblanks_argclust)),
+  LogFoldChange = ANCOMBC2.results$lfc_copdcaco1,
+  StandardError = ANCOMBC2.results$se_copdcaco1,
+  AdjustedPval = ANCOMBC2.results$q_copdcaco1
+)
+
+# Determine the fill color based on the sign of LogFoldChange
+data_ANCOMBC2$FillColor <- ifelse(data_ANCOMBC2$LogFoldChange > 0, "darkorange", "cornflowerblue")
+data_ANCOMBC2$ARGCluster <- reorder(data_ANCOMBC2$ARGCluster, data_ANCOMBC2$LogFoldChange)
+
+# Create the horizontal bar plot - with p values (not adjusted)
+ANCOMBC2_barplot <- ggplot(data, aes(y = ARGCluster, x = LogFoldChange, fill = FillColor)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbarh(aes(xmin = LogFoldChange - StandardError, xmax = LogFoldChange + StandardError), height = 0.2) +
+  scale_fill_identity() +  # Set fill color to FillColor
+  labs(y = "ARG Cluster", x = "Log Fold Change") +
+  theme_minimal() + # You can customize the theme as needed
+  theme(
+    panel.background = element_rect(fill = "white"),  # Set the background to white
+    plot.background = element_rect(fill = "white")     # Set the plot area background to white
+  ) 
+
+
+# Show the plot
+print(ANCOMBC2_barplot)
+
+ggsave("Output_files//Differential_abundance//horizontal_ANCOMBC2_bar_plot.png", plot = ANCOMBC2_barplot, width = 8, height = 10, units = "in", dpi = 1000)
+```
+
+# Livestock exposure
+## ANCOM-BC2 on filtered data (0.1% relative abundance, 15% prevalent)
+```{r}
+# ANCOM-BC2 does not work with continuous input data, therefore will split my variables into quartiles
+Final.ps.DAanalysis.exp.filtered
+# Split livestock exposure variables into quartiles
+# MinDistAnyFarm.NEG
+Final.ps.DAanalysis.exp.filtered.quart <- Final.ps.DAanalysis.exp.filtered
+
+#ngoatsWghtDist.1000m.sum
+# Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum, q=4, labels =c("1st quartile (ngoatsWghtDist.1000m.sum)", "2nd quartile (ngoatsWghtDist.1000m.sum)", "3rd quartile (ngoatsWghtDist.1000m.sum)", "4th quartile (ngoatsWghtDist.1000m.sum)"))
+
+# Difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe?
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum == 0, "No_goat_farms_within_1000m","1_or_more_goat_farms_within_1000m")
+
+#nhorsesWghtDist.3000m.sum
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st_quartile_nhorsesWghtDist.3000m.sum", "2nd_quartile_nhorsesWghtDist.3000m.sum", "3rd_quartile_nhorsesWghtDist.3000m.sum", "4th_quartile_nhorsesWghtDist.3000m.sum"))
+#nAnyFarmWghtDist.3000m.sum
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st_quartile_nAnyFarmWghtDist.3000m.sum", "2nd_quartile_nAnyFarmWghtDist.3000m.sum", "3rd_quartile_nAnyFarmWghtDist.3000m.sum", "4th_quartile_nAnyFarmWghtDist.3000m.sum"))
+
+
+#Inspect the new ps object
+Final.ps.DAanalysis.exp.filtered.quart
+Final.ps.DAanalysis.exp.filtered.quart@otu_table 
+Final.ps.DAanalysis.exp.filtered.quart@tax_table 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$ngoatsWghtDist.1000m.sum 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nhorsesWghtDist.3000m.sum 
+Final.ps.DAanalysis.exp.filtered.quart@sam_data$nAnyFarmWghtDist.3000m.sum 
+# Rename otu table column names to their ARG Cluster name
+colnames(Final.ps.DAanalysis.exp.filtered.quart@otu_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+
+rownames(Final.ps.DAanalysis.exp.filtered.quart@tax_table) <- c("aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(4)-Ia","aph(6)-Id","blaOXA-60_clust","blaSPU-1","blaTEM_clust","cfxA_clust","penA","lsa(C)","erm(B)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","mef(A)-3","mef(A)_clust","msr(D)","cat(pC194)","sul1","sul2","tet(32)","tet(37)","tet(A)","tet(B)","tet(C)","tet(M)","tet(O)","tet(O/W/32/O/W/O)","tet(Q)","tet(W)")
+
+# Subset the tax_table to "ARGCluster"
+argcluster_tax <- tax_table(Final.ps.DAanalysis.exp.filtered.quart)[, "ARGCluster"]
+rownames(argcluster_tax) <- argcluster_tax[, "ARGCluster"]
+
+# Create a new phyloseq object
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel <- phyloseq(
+  otu_table(Final.ps.DAanalysis.exp.filtered.quart),
+  sample_data(Final.ps.DAanalysis.exp.filtered.quart),
+  tax_table = argcluster_tax
+)
+
+# Run ANCOMBC2 analysis - nAnyFarmWghtDist.3000m.sum quartiles
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nAnyFarmWghtDist.3000m.sum
+
+out_nAnyFarmWghtDist.3000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "nAnyFarmWghtDist.3000m.sum + copdcaco",
+  group = "nAnyFarmWghtDist.3000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+saveRDS(out_nAnyFarmWghtDist.3000m.sum, "Output_files//Differential_abundance//ANCOMBC2_output_nAnyFarmWghtDist.3000m.sum.rds")
+
+# Differential abundance test 
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum <- out_nAnyFarmWghtDist.3000m.sum$res
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$diff_copdcaco1
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$p_copdcaco1
+ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$q_copdcaco1
+any(ANCOMBC2.results.nAnyFarmWghtDist.3000m.sum$diff_copdcaco1 == "TRUE")
+# None come out as significant. 
+
+
+# N.B copdcaco = 0 (control) is used as the reference group in my case
+# lfc_(Intercept) and lfc_copdcaco1: lfc = log fold changes in ARG abundance. lfc_(Intercept): This column represents the LFC for each ARG  between the reference group (Intercept) and itself. In other words, it shows the estimated change in abundance or expression of each taxon within the reference group. The LFC_(Intercept) values indicate how much the abundance or expression of each ARG varies within the reference group. fc_copdcaco1: This column represents the LFC for each ARG or feature between the reference group (Intercept) and the "copdcaco1" group. It shows the estimated change in abundance or expression of each taxon when comparing the reference group to the "copdcaco1" group. A positive LFC indicates an increase in abundance or expression in the "copdcaco1" group compared to the reference group, while a negative LFC suggests a decrease. The magnitude of the LFC_(copdcaco1) values provides information about the size of the difference between these two groups.
+# se_(Intercept) and se_copdcaco1: These represent the standard errors associated with the log-fold changes for the reference group and the copdcaco1 group, respectively. The standard error provides a measure of the uncertainty associated with the LFC estimate.
+# W_(Intercept) and W_copdcaco1: These values correspond to the Wilcoxon rank-sum test statistics for the reference group and the copdcaco1 group. These statistics are used to assess the significance of differences in microbial abundance between the groups.
+# p_(Intercept) and p_copdcaco1: These represent the p-values associated with the Wilcoxon rank-sum tests for the reference group and the copdcaco1 group. A small p-value indicates that there is evidence to reject the null hypothesis, suggesting significant differences in abundance between the groups.
+# q_(Intercept) and q_copdcaco1: These values may represent adjusted p-values, often corrected for multiple comparisons. Adjusted p-values take into account the issue of conducting multiple statistical tests and help control the family-wise error rate.
+# diff_(Intercept) and diff_copdcaco1: These values typically represent binary indicators (e.g., "TRUE" or "FALSE) that signify whether the corresponding log-fold change is considered significant or not. 
+
+str(Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum)
+# Then rearrange the levels with the desired reference group (3rd quartile)
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum <-
+  relevel(Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$nhorsesWghtDist.3000m.sum, ref = "1st_quartile_nhorsesWghtDist.3000m.sum")
+
+# Run ANCOMBC2 analysis - nhorsesWghtDist.3000m.sum quartiles
+out_nhorsesWghtDist.3000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "nhorsesWghtDist.3000m.sum + copdcaco",
+  group = "nhorsesWghtDist.3000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+# Check for structural zeros
+tab_zero <- out_nhorsesWghtDist.3000m.sum$zero_ind
+write.xlsx(tab_zero, "Output_files//Differential_abundance//ANCOMBC2.tab.zero.nhorses.xlsx")
+
+# ANCOM-BC2 global test
+ANCOMBC2.global.results.nhorses <- out_nhorsesWghtDist.3000m.sum$res_global
+# Save results table as .xlsx
+write.xlsx(ANCOMBC2.global.results.nhorses, "Output_files//Differential_abundance//ANCOMBC2.global.results.nhorses.xlsx")
+
+# Primary analysis from ANCOM-BC2
+ANCOMBC2.results.nhorses <- out_nhorsesWghtDist.3000m.sum$res
+# Save results table as .xlsx
+write.xlsx(ANCOMBC2.results.nhorses, "Output_files//Differential_abundance//ANCOMBC2.results.nhorses.xlsx")
+
+
+
+# The primary goal of the ANCOM-BC2 global test is to discern taxa that demonstrate differential abundance between a minimum of two groups when analyzing three or more experimental groups.
+ANCOMBC2.global.results.nhorses$diff_abn
+any(ANCOMBC2.global.results.nhorses$diff_abn == "TRUE")
+# Get the row indices where "diff_abn" is TRUE
+true_indices <- which(ANCOMBC2.global.results.nhorses$diff_abn == TRUE)
+# Extract the rows with TRUE values
+true_rows <- ANCOMBC2.global.results.nhorses[true_indices, ]
+# Display the rows with TRUE values
+print(true_rows)
+
+
+
+
+# Run ANCOMBC2 analysis - ngoatsWghtDist.1000m.sum halves (since quartiles doesn't work because there are < 2 in the 4th quartile)
+Final.ps.DAanalysis.exp.filtered.half <- Final.ps.DAanalysis.exp.filtered
+Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum<- cut(Final.ps.DAanalysis.exp.filtered.half@sam_data$ngoatsWghtDist.1000m.sum, breaks=2, labels =c("Top half (ngoatsWghtDist.1000m.sum)", "Bottom half (ngoatsWghtDist.1000m.sum)"))
+
+out_ngoatsWghtDist.1000m.sum = ancombc2(
+  data = Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel, 
+  assay_name = NULL,
+  p_adj_method = "BH", 
+  prv_cut = 0, 
+  fix_formula = "ngoatsWghtDist.1000m.sum + copdcaco",
+  group = "ngoatsWghtDist.1000m.sum", 
+  struc_zero = TRUE, 
+  neg_lb = FALSE, 
+  alpha = 0.05, 
+  global = TRUE,
+  n_cl =1, 
+  verbose = TRUE
+)
+
+Final.ps.DAanalysis.exp.filtered.quart.clustertaxlevel@sam_data$ngoatsWghtDist.1000m.sum
+# Differential abundance test 
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum <- out_ngoatsWghtDist.1000m.sum$res
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$p_copdcaco1
+ANCOMBC2.results.ngoatsWghtDist.1000m.sum$q_copdcaco1
+any(ANCOMBC2.results.ngoatsWghtDist.1000m.sum$diff_copdcaco1 == "TRUE")
+
+
+```
