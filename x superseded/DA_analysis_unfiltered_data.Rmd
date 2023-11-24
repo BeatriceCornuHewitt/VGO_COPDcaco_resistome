@@ -1,0 +1,430 @@
+---
+title: "DA analysis on unfiltered data"
+output: html_notebook
+---
+# COPD vs control
+## DESeq2
+### DESeq2 on unfiltered data
+```{r}
+# Using WvK method - with phyloseq_to_deseq2 function
+phyloseq_to_deseq2_obj_unfiltered <- phyloseq_to_deseq2(Final.ps.DAanalysis.clusternames.noblanks,~copdcaco)
+# RUN DESeq function 
+phyloseq_to_deseq2_obj_unfiltered <- DESeq(phyloseq_to_deseq2_obj_unfiltered)
+deseq2_results_unfiltered <- results(phyloseq_to_deseq2_obj_unfiltered)
+deseq2_results_unfiltered
+# summary of differential gene expression
+summary(deseq2_results_unfiltered)
+head(deseq2_results_unfiltered)
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2_results_unfiltered)$description
+# Order the results table by the smallest p value:
+deseq2_results_unfiltered_ordered <- deseq2_results_unfiltered[order(deseq2_results_unfiltered),]
+deseq2_results_unfiltered_ordered #tet(K)_1_U38656 has the greatest difference between COPD and controls
+# How many adjusted p-values are < 0.1? 
+sum(deseq2_results_unfiltered$padj < 0.1, na.rm=TRUE) # 0 ARG clusters are <0.1
+# Create dispersion estimate plot
+plotDispEsts(phyloseq_to_deseq2_obj_unfiltered)
+
+# we can use plotCounts fxn to compare the normalized counts between COPD and control groups for our top 4 ARGs
+par(mfrow=c(1,2))
+plotCounts(dds_method2, gene="msr(D)_3_AF227520", intgroup="copdcaco")
+plotCounts(dds_method2, gene="tet(M)_4_X75073", intgroup="copdcaco")
+
+# Plot to show the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. Points will be colored red if the adjusted p value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
+plotMA(res_method2, ylim=c(-2,2), size= 20)
+# Shrink the log2fold changes as these provide better LFC estimates
+resultsNames(dds_method2)
+BiocManager::install("apeglm")
+resLFCshrink <- lfcShrink(dds_method2, coef="copdcaco_1_vs_0", type="apeglm")
+resLFCshrink
+# It is more useful visualize the MA-plot for the shrunken log2 fold changes, which remove the noise associated with log2 fold changes from low count genes without requiring arbitrary filtering thresholds.
+plotMA(resLFCshrink, ylim=c(-2,2)) 
+# Using ggplot2 to create an MA plot
+# Coerce to a data frame
+deseq2ResDF <- as.data.frame(res_method2)
+# Examine this data frame
+head(deseq2ResDF)
+# Set a boolean column for significance
+deseq2ResDF$significant <- ifelse(deseq2ResDF$padj < .1, "Significant", NA)
+# Plot the results similar to DEseq2
+ggplot(deseq2ResDF, aes(baseMean, log2FoldChange, colour=significant)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3), oob=squish) + scale_x_log10() + geom_hline(yintercept = 0, colour="tomato1", size=2) + labs(x="mean of normalized counts", y="log fold change") + scale_colour_manual(name="q-value", values=("Significant"="red"), na.value="grey50") + theme_bw()
+# Let's add some more detail
+ggplot(deseq2ResDF, aes(baseMean, log2FoldChange, colour=padj)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3), oob=squish) + scale_x_log10() + geom_hline(yintercept = 0, colour="darkorchid4", size=1, linetype="longdash") + labs(x="mean of normalized counts", y="log fold change") + scale_colour_viridis(direction=-1, trans='sqrt') + theme_bw() + geom_density_2d(colour="black", size=2)
+
+# volcano plot
+par(mfrow=c(1,1))
+with(res_method2, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+with(res_method2, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+with(subset(res_method2, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+## ALDEx2
+### ALDEx2 on unfiltered data
+```{r}
+Countdata.DESeq2 # This is the ps object to be used for ALDex2 analysis (not gene length corrected but corrected for input volumes and qPCR bacterial counts). BUT this is not at the 90% cluster level so I should agglomerate this ps object (using previously created tax_glom2 function from AB - see below too)
+# Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
+ARGcluster.aggl.ALDEx2 <- tax_glom2(Countdata.DESeq2, taxrank=rank_names(Countdata.DESeq2)[6], NArm=TRUE)
+taxa_names(ARGcluster.aggl.ALDEx2)
+# Confused why the 'taxa_names' are not the arg cluster names? AB responded saying: "What you see is perfectly normal. If you checkout the tax_table you will see that the lowest level is cluster. The lower ranks should be NA. That is why you use explaining Ps object names to realise some aggregation happened. The data is underneath still linked on indiv accno level but incomplete. Only one per arg cluster should be present.  If you now directly ask the taxon name it is indeed "wrong" the accession name. Just use the arg cluster name corresponding to it and you should be fine. Most functions suited for Ps object allow to mention the tax rank or the fill rank to use. They handle it for you underneath in the same way.No worries, just check above and if that matches. Just continue and be sure to use the name of the tax rank. 
+# Check tax-table of ps object
+tax_table(ARGcluster.aggl.ALDEx2)
+
+# How many taxa before/after agglomeration?
+ntaxa(Countdata.DESeq2); ntaxa(ARGcluster.aggl.ALDEx2)
+# 85 ARGClusters vs 233 ARGs 
+
+#Rename ARG clusters by cluster name
+colnames(ARGcluster.aggl.ALDEx2@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+
+# create otu table for aldex2 analysis - this needs to be "A non-negative, integer-only data.frame or matrix with unique names for all rows and columns. Rows should contain genes and columns should contain sequencing read counts (i.e., sample vectors). Rows with 0 reads in each sample are deleted prior to analysis
+ALDEx2.otutable.trans <- t(otu_table(ARGcluster.aggl.ALDEx2))
+ALDEx2.otutable.trans.bill.round <- round(ALDEx2.otutable.trans * 1000000000,0) # I multiply by billion as aldex2 requires that reads are all integers 
+otutab.for.ALDEx2 <- data.frame(ALDEx2.otutable.trans.bill.round)
+# Then we set the comparison groups. This must be a vector of conditions in the same order as the samples in the input counts table.
+sampledata.for.ALDEx2 <- sample_data(ARGcluster.aggl.ALDEx2)$copdcaco
+
+# Run the aldex command - I ask aldex to do a 2-sample t-test to calculate effect sizes,
+# The aldex function is a wrapper that performs log-ratio transformation and statistical testing in a single line of code. Specifically, this function: (a) generates Monte Carlo samples of the Dirichlet distribution for each sample, (b) converts each instance using a log-ratio transform, then (c) returns test results for two sample (Welch’s t, Wilcoxon) or multi-sample (glm, Kruskal-Wallace) tests. This function also estimates effect size for two sample analyses.
+ALDEx2_COPDcontrol <- ALDEx2::aldex(otutab.for.ALDEx2, sampledata.for.ALDEx2, test="t", effect = TRUE, denom="iqlr")  # Aldex parameters set: test = "t" runs Welch's t-test and Wilcoxon tests. Effect = TRUE - tells aldex to calculate effect sizes. Denom="iqlr" is commonly used and indicates which features to retain as the denominator for the geometric mean calculation - "iqlr" accounts for data with systematic variation.
+
+# Create MA and Effect plots of ALDEx2 output
+# create Bland-Altman plot 
+par(mfrow = c(1, 2))
+aldex.plot(ALDEx2_COPDcontrol, type="MA", test="welch", xlab="Log-ratio abundance",
+    ylab="Difference")
+# create variance-difference plot 
+aldex.plot(ALDEx2_COPDcontrol, type="MW", test="welch", xlab="Dispersion",
+    ylab="Difference", all.cex = 3)
+
+# Compute an aldex.clr object
+ALDEx2_COPDcontrol.clr <- aldex.clr(otutab.for.ALDEx2, sampledata.for.ALDEx2, mc.samples=16, denom="all", verbose=F)
+# aldex.ttest calculates the expected values of the Wilcoxon Rank Sum test and Welch’s t-test on the data returned by aldex.clr.
+ALDEx2_COPDcontrol.tt <- aldex.ttest(ALDEx2_COPDcontrol.clr, paired.test=FALSE, verbose=FALSE)
+ALDEx2_COPDcontrol.tt 
+# where: we.ep - Expected P value of Welch’s t test, we.eBH - Expected Benjamini-Hochberg corrected P value of Welch’s t test, wi.ep - Expected P value of Wilcoxon rank test, wi.eBH - Expected Benjamini-Hochberg corrected P value of Wilcoxon test
+# I will look at Wilcoxon test results with BH correction (we.eBH)
+# Reorder the p-values based on size of wi.eBH value
+reOrdered_ALDEx2_COPDcontrol.tt <- ALDEx2_COPDcontrol.tt[order(ALDEx2_COPDcontrol.tt$wi.eBH),]
+reOrdered_ALDEx2_COPDcontrol.tt
+# check to identify how many values are significant from the t-test (q<0.1)
+which(ALDEx2_COPDcontrol.tt$wi.eBH < 0.1)
+# No clusters have BH corrected p-value < 0.1
+# Therefore we conclude that using the ALDEx2 method, we do not identify any ARGs which are differentially abundant. 
+# Estimate effect size and the within and between condition values in the case of two conditions
+ALDEx2_COPDcontrol.effect <- aldex.effect(ALDEx2_COPDcontrol.clr, CI=T, verbose=FALSE)
+# Merging the t-test and effect data are merged into one object
+ALDEx2_COPDcontrol.all <- data.frame(ALDEx2_COPDcontrol.tt,ALDEx2_COPDcontrol.effect)
+```
+
+# Livestock exposures
+## DESeq2
+### DESeq2 on unfiltered data
+```{r}
+# Inspect the unfiltered ps object
+Final.ps.DAanalysis.exp.clusternames
+Final.ps.DAanalysis.exp.clusternames@otu_table # clusters labelled correctly 
+Final.ps.DAanalysis.exp.clusternames@sam_data # exposure proxy sample data added 
+Final.ps.DAanalysis.exp.clusternames@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
+str(Final.ps.DAanalysis.exp.clusternames)
+
+# Now ready to run the deseq2 analysis using the phyloseq_to_deseq2 function
+# Start with assessing endotoxin concentration effects
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~DISP_EUinPM10_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont <- results(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+head(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered <- deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont[order(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont$pvalue),]
+deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered #tet(O/W/32/O/W/O) has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.ordered$padj < 0.1, na.rm=TRUE) # 5 ARG clusters are <0.1
+
+# Plot to show the log2 fold changes attributable to a given variable over the mean of normalized counts for all the samples in the DESeqDataSet. Points will be colored red if the adjusted p value is less than 0.1. Points which fall out of the window are plotted as open triangles pointing either up or down.
+plotMA(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, ylim=c(-2,2))
+
+# Shrink the log2fold changes as these provide better LFC estimates
+resultsNames(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+resLFCshrink.exp.cont <- lfcShrink(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, coef="DISP_EUinPM10_AnnualAv_WP99.5", type="apeglm")
+resLFCshrink.exp.cont
+
+#It is more useful visualize the MA-plot for the shrunken log2 fold changes, which remove the noise associated with log2 fold changes from low count genes without requiring arbitrary filtering thresholds.
+plotMA(resLFCshrink.exp.cont, ylim=c(-2,2)) # plot looks odd...?
+
+# Coerce to a data frame
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF <- as.data.frame(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont)
+# Examine this data frame
+head(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF)
+# Set a boolean column for significance
+deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF$significant <- ifelse(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF$padj < .1, "Significant", NA)
+# Plot the results similar to DEseq2
+ggplot(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF, aes(baseMean, log2FoldChange, colour=significant)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3)) + scale_x_log10() + geom_hline(yintercept = 0, colour="tomato1", size=2) + labs(x="mean of normalized counts", y="log fold change") + scale_colour_manual(name="q-value", values=("Significant"="red"), na.value="grey50") + theme_bw()
+# Let's add some more detail
+ggplot(deseq2.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont.DF, aes(baseMean, log2FoldChange, colour=padj)) + geom_point(size=1) + scale_y_continuous(limits=c(-3, 3)) + scale_x_log10() + geom_hline(yintercept = 0, colour="darkorchid4", size=1, linetype="longdash") + labs(x="mean of normalized counts", y="log fold change") + scale_colour_viridis(direction=-1, trans='sqrt') + theme_bw() + geom_density_2d(colour="black", size=2)
+
+# volcano plot
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+with(subset(deseq2.results.exp.DISP_EUinPM10_AnnualAv_WP99.5.cont, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+
+# Now look at PM10 concentration effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~DISP_PM10CONC_AnnualAv_WP99.5)
+
+# RUN  DESeq function 
+deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- DESeq(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont <- results(deseq2.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+head(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered <- deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont[order(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont$pvalue),]
+deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.DISP_PM10CONC_AnnualAv_WP99.5.cont.ordered$padj < 0.1, na.rm=TRUE) # 2 ARG clusters have p-value <0.1
+
+
+# Now look at nhorsesWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~nhorsesWghtDist.3000m.sum)
+
+# RUN  DESeq function 
+deseq2.exp.nhorsesWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont <- results(deseq2.exp.nhorsesWghtDist.3000m.sum.cont)
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont[order(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.nhorsesWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+
+# Now look at ngoatsWghtDist.3000m.sum effects on differential abundance
+# Convert phyloseq data to DESeq2 dataset object
+deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- phyloseq_to_deseq2(Final.ps.DAanalysis.exp.clusternames,~ngoatsWghtDist.3000m.sum)
+
+# RUN  DESeq function 
+deseq2.exp.ngoatsWghtDist.3000m.sum.cont <- DESeq(deseq2.exp.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont <- results(deseq2.exp.ngoatsWghtDist.3000m.sum.cont)
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont
+#summary of differential gene expression
+summary(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)
+head(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)
+
+# Information about which variables and tests were used for the results is given by this function
+mcols(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont)$description
+
+# Order the results table by the smallest p value:
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont.ordered <- deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont[order(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont$pvalue),]
+deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont.ordered #erm(T)_4_AJ488494 has the greatest difference for each fold change in endotoxin concentration
+
+# How many adjusted p-values are < 0.1? 
+sum(deseq2.results.exp.ngoatsWghtDist.3000m.sum.cont$padj < 0.1, na.rm=TRUE) # 3 ARG clusters have p-value <0.1
+```
+## ALDEx2 
+### ALDEx2 on unfiltered data
+```{r}
+# Use the previous ps object created above for the deseq2 analysis
+ARGcluster.aggl.DESeq2.exp
+ARGcluster.aggl.DESeq2.exp@otu_table # clusters labelled correctly 
+ARGcluster.aggl.DESeq2.exp@sam_data # exposure proxy sample data added 
+ARGcluster.aggl.DESeq2.exp@sam_data$DISP_EUinPM10_AnnualAv_WP99.5 # exposure proxy data is continuous 
+str(ARGcluster.aggl.DESeq2.exp)
+
+# create otu table for aldex2 analysis - this needs to be "A non-negative, integer-only data.frame or matrix with unique names for all rows and columns. Rows should contain genes and columns should contain sequencing read counts (i.e., sample vectors). Rows with 0 reads in each sample are deleted prior to analysis
+ALDEx2.exp.otutable.trans <- t(otu_table(ARGcluster.aggl.DESeq2.exp))
+ALDEx2.exp.otutable.trans.bill.round <- round(ALDEx2.exp.otutable.trans * 1000000000,0) # I multiply by billion as aldex2 requires that reads are all integers 
+ALDEx2.exp.otutable.df <- data.frame(ALDEx2.exp.otutable.trans.bill.round)
+# Then we set the comparison groups. This must be a vector of conditions in the same order as the samples in the input counts table.
+# I firstly test dispersion modelled endotoxin as the comparison variable: 
+ALDEx2.exp.DISPendotoxin <- sample_data(ARGcluster.aggl.DESeq2.exp)$DISP_EUinPM10_AnnualAv_WP99.5
+# Instead of using the simple aldex() function, I need to use aldex.corr as I am using a continuous variable (e.g. endotoxin concentration to begin with)
+# Firstly create the aldex.clr object
+ALDEx2.exp.clr <- aldex.clr(ALDEx2.exp.otutable.df, mc.samples = 128, verbose = FALSE, useMC=FALSE)
+# Now run the correlation assessment 
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable, using data returned returned by aldex.clr and a vector of the continuous variable.It returns results of Pearson, Spearman and Kendall tests.
+aldex2_endotoxin_continuous<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.DISPendotoxin)
+aldex2_endotoxin_continuous
+# aldex.corr calculates the expected values for the correlation between each feature and a continuous variable (dispersion modelled endotoxin in this case), using data returned returned by aldex.clr and a vector of the continuous variable. Returns results of Pearson, Spearman and Kendall tests.
+# I will look at the BH corrected pearson correlation coefficient p-value (this is the column named: "pearson.eBH" (expected Benjamini-Hochberg corrected P value of the Pearson Product moment value for each feature)
+aldex2_endotoxin_continuous_reordered <- aldex2_endotoxin_continuous[order(aldex2_endotoxin_continuous$pearson.eBH),]
+# check the ARGs that were previously identified as differentially abundant to see whether there are significant correlations identified by ALDEx2
+count(aldex2_endotoxin_continuous_reordered$pearson.eBH < 0.1) 
+# 3 ARG clusters have an expected Benjamini-Hochberg corrected P-value of the Pearson Product moment value - these are the following ARG clusters: tet(K), blaSPU-1, msr(E)
+
+# Test for correlation with dispersion modelled PM10 now
+ALDEx2.exp.DISPPM10 <- sample_data(ARGcluster.aggl.DESeq2.exp)$DISP_PM10CONC_AnnualAv_WP99.5
+aldex2_PM10_continuous<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.DISPPM10)
+aldex2_PM10_continuous
+count(aldex2_PM10_continuous$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to dispersion modelled PM10
+aldex2_PM10_continuous_reordered <- aldex2_PM10_continuous[order(aldex2_PM10_continuous$pearson.eBH),]
+aldex2_PM10_continuous_reordered
+
+# Test for correlation with Number of horses weighted to distance in a 3000m buffer
+ALDEx2.exp.nhorsesWghtDist.3000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$nhorsesWghtDist.3000m.sum
+aldex2_nhorsesWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.nhorsesWghtDist.3000m.sum)
+aldex2_nhorsesWghtDist.3000m.sum
+count(aldex2_nhorsesWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+
+# Test for correlation with Number of goats weighted to distance in a 3000m buffer
+ALDEx2.exp.ngoatsWghtDist.3000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$ngoatsWghtDist.3000m.sum
+aldex2_ngoatsWghtDist.3000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.ngoatsWghtDist.3000m.sum)
+aldex2_ngoatsWghtDist.3000m.sum
+count(aldex2_ngoatsWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clusters are correlated significantly to nhorsesWghtDist.3000m.sum
+# list of all exposure proxy variables 
+names( ARGcluster.aggl.DESeq2.exp@sam_data)
+
+# Test for correlation with MinDistAnyFarm.NEG
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+# Test for correlation with MinDistAnyFarm.INV
+ALDEx2.exp.MinDistAnyFarm.INV <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.INV
+aldex2_MinDistAnyFarm.INV<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.INV)
+aldex2_MinDistAnyFarm.INV
+count(aldex2_MinDistAnyFarm.INV$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+# AllFarm.3000m
+ALDEx2.exp.AllFarm.3000m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.3000m
+aldex2_AllFarm.3000m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.3000m)
+aldex2_AllFarm.3000m
+count(aldex2_AllFarm.3000m$pearson.eBH < 0.1) #No ARG clusters are correlated
+
+#AllFarm.1000m
+ALDEx2.exp.AllFarm.1000m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.1000m
+aldex2_AllFarm.1000m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.1000m)
+aldex2_AllFarm.1000m
+count(aldex2_AllFarm.1000m$pearson.eBH < 0.1) 
+
+# AllFarm.500m
+ALDEx2.exp.AllFarm.500m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.500m
+aldex2_AllFarm.500m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.500m)
+aldex2_AllFarm.500m
+count(aldex2_AllFarm.500m$pearson.eBH < 0.1) 
+
+# AllFarm.250m
+ALDEx2.exp.AllFarm.250m <- ARGcluster.aggl.DESeq2.exp@sam_data$AllFarm.250m
+aldex2_AllFarm.250m<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.AllFarm.250m)
+aldex2_AllFarm.250m
+count(aldex2_AllFarm.250m$pearson.eBH < 0.1) 
+# npigsWghtDist.1000m.sum
+ALDEx2.exp.npigsWghtDist.1000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$npigsWghtDist.1000m.sum
+aldex2_npigsWghtDist.1000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.npigsWghtDist.1000m.sum)
+aldex2_npigsWghtDist.1000m.sum
+count(aldex2_npigsWghtDist.1000m.sum$pearson.eBH < 0.1) 
+# npoultryWghtDist.1000m.sum
+ALDEx2.exp.npoultryWghtDist.1000m.sum <- ARGcluster.aggl.DESeq2.exp@sam_data$npoultryWghtDist.1000m.sum
+aldex2_npoultryWghtDist.1000m.sum<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.npoultryWghtDist.1000m.sum)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ncowsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nhorsesWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ngoatsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nsheepWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nfuranimsWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# npigsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# npoultryWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ncowsWghtDist.3000m.sum    
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nhorsesWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# ngoatsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nsheepWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nfuranimsWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nAnyFarmWghtDist.1000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# nAnyFarmWghtDist.3000m.sum
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# DISP_EUinPM10_AnnualAv_WP99.5
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+# DISP_PM10CONC_AnnualAv_WP99.5
+ALDEx2.exp.MinDistAnyFarm.NEG <- ARGcluster.aggl.DESeq2.exp@sam_data$MinDistAnyFarm.NEG
+aldex2_MinDistAnyFarm.NEG<- aldex.corr(ALDEx2.exp.clr,ALDEx2.exp.MinDistAnyFarm.NEG)
+aldex2_MinDistAnyFarm.NEG
+count(aldex2_MinDistAnyFarm.NEG$pearson.eBH < 0.1) 
+
+```
