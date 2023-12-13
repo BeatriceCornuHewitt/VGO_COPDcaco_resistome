@@ -73,6 +73,65 @@ write.csv(otu, paste0(psfile, ".tab" ), row.names=FALSE )
 # Basic metrics of PS object
 summary(sample_data(merged))
 ```
+# Phyloseq for Zenodo
+```{r}
+# Check if the row names match between 'merged' and 'ARGlen'
+row_names_match <- all(rownames(merged@tax_table) == rownames(ARGlen))
+
+if (row_names_match) {
+  cat("Row names match between 'merged' and 'ARGlen'.\n")
+} else {
+  cat("Row names do not match between 'merged' and 'ARGlen'.\n")
+}
+
+# Create a new tax_table with the additional 'ARGlen' column
+new_tax_table_df <- data.frame(merged@tax_table, ARGlen = ARGlen$ARGlen)
+colnames <- colnames(new_tax_table_df)
+
+new_tax_table <- tax_table(new_tax_table_df)
+colnames(tax_table(new_tax_table)) <- colnames
+taxa_names(new_tax_table) <- rownames(new_tax_table_df)
+
+zenodo_ps <- merged
+zenodo_ps@tax_table <- new_tax_table
+zenodo_ps@tax_table
+
+# Now keep only information we want for the zenodo ps object
+# Taxonomy table
+# Create a copy of the tax_table
+new_tax_table_zenodo <- tax_table(zenodo_ps)
+colnames(tax_table(zenodo_ps))
+# Define 'tax_table_columns_to_keep' as a vector of the column names you want to keep
+tax_table_columns_to_keep <- c("ARG_class", "ARGCluster", "ARGlen")
+# Subset the tax_table to keep only the specified columns
+new_tax_table_zenodo <- new_tax_table_zenodo[, tax_table_columns_to_keep]
+# Replace the tax_table in your phyloseq object with the modified one
+zenodo_ps@tax_table <- new_tax_table_zenodo
+
+# Sample data 
+new_sam_data_zenodo <- zenodo_ps@sam_data
+colnames(zenodo_ps@sam_data)
+sam_data_columns_to_keep <- c("copdcaco", "qPCR_16S_ngml", "Enrich_pool_num", "RelativeCorrect_readpair_counts")
+new_sam_data_zenodo <- new_sam_data_zenodo[, sam_data_columns_to_keep]
+zenodo_ps@sam_data <- new_sam_data_zenodo
+
+# Otu table - keep as normal (no corrections)
+zenodo_ps@otu_table
+
+# Remove duplicate sample (13674) from the dataset
+zenodo_ps <- prune_samples(sample_names(zenodo_ps) != "13674", zenodo_ps) 
+zenodo_ps # Final PS object therefore now has 72 samples
+
+resistome_samdata<- zenodo_ps@sam_data
+resistome_samdata$ParticipantID <- rownames(resistome_samdata)
+write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
+
+
+zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
+zenodo_ps@sam_data$copdcaco
+zenodo_ps
+saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
+```
 # Normalise PS for relative volume inputs  
 ```{r}
 # We need to normalise/correct the relative ratios between samples.
@@ -140,6 +199,9 @@ rownames(ARGlen) <- NULL
 ARGlen <- ARGlen %>% column_to_rownames("ARGname")
 ARGlen
 
+ARGlen$ARGname <- rownames(ARGlen)
+write.xlsx(ARGlen, "Output_files//Phyloseq_objects//ARGlengths.xlsx")
+
 ## ARG count to FPK
 merged.rar3.fpk <- merged.rar3
 # convert otu counts directly by matrix manipulation in the ps object using ARGlen df.
@@ -160,68 +222,6 @@ write.csv(otu, paste0(psfpkfile, ".tab"), row.names=FALSE)
 # Basic metrics of normalised/ARG length-corrected PS 
 summary(sample_data(merged.rar3.fpk))
 merged@tax_table
-```
-# Phyloseq for Zenodo
-```{r}
-# Check if the row names match between 'merged' and 'ARGlen'
-row_names_match <- all(rownames(merged@tax_table) == rownames(ARGlen))
-
-if (row_names_match) {
-  cat("Row names match between 'merged' and 'ARGlen'.\n")
-} else {
-  cat("Row names do not match between 'merged' and 'ARGlen'.\n")
-}
-
-
-# Create a new tax_table with the additional 'ARGlen' column
-new_tax_table_df <- data.frame(merged@tax_table, ARGlen = ARGlen$ARGlen)
-colnames <- colnames(new_tax_table_df)
-
-new_tax_table <- tax_table(new_tax_table_df)
-colnames(tax_table(new_tax_table)) <- colnames
-taxa_names(new_tax_table) <- rownames(new_tax_table_df)
-
-zenodo_ps <- merged
-zenodo_ps@tax_table <- new_tax_table
-zenodo_ps@tax_table
-
-
-# Now keep only information we want for the zenodo ps object
-# Taxonomy table
-# Create a copy of the tax_table
-new_tax_table_zenodo <- tax_table(zenodo_ps)
-colnames(tax_table(zenodo_ps))
-# Define 'tax_table_columns_to_keep' as a vector of the column names you want to keep
-tax_table_columns_to_keep <- c("ARG_class", "ARGCluster", "ARGlen")
-# Subset the tax_table to keep only the specified columns
-new_tax_table_zenodo <- new_tax_table_zenodo[, tax_table_columns_to_keep]
-# Replace the tax_table in your phyloseq object with the modified one
-zenodo_ps@tax_table <- new_tax_table_zenodo
-
-# Sample data 
-new_sam_data_zenodo <- zenodo_ps@sam_data
-colnames(zenodo_ps@sam_data)
-sam_data_columns_to_keep <- c("copdcaco", "qPCR_16S_ngml", "Enrich_pool_num", "RelativeCorrect_readpair_counts")
-new_sam_data_zenodo <- new_sam_data_zenodo[, sam_data_columns_to_keep]
-zenodo_ps@sam_data <- new_sam_data_zenodo
-
-# Otu table - keep as normal (no corrections)
-zenodo_ps@otu_table
-
-# Remove duplicate sample (13674) from the dataset
-zenodo_ps <- prune_samples(sample_names(zenodo_ps) != "13674", zenodo_ps) 
-zenodo_ps # Final PS object therefore now has 72 samples
-
-resistome_samdata<- zenodo_ps@sam_data
-resistome_samdata$ParticipantID <- rownames(resistome_samdata)
-write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
-
-
-zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
-zenodo_ps@sam_data$copdcaco
-zenodo_ps
-saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
-
 ```
 # Correct PS for 16S qPCR counts
 ```{r}
