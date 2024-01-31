@@ -133,6 +133,9 @@ protest(microbiome.PCoA.random, resistome.procrustes.PCoA.data, scores = "sites"
 
 # ggplot for procrustes plots 
 # PCoA procrustes
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+
 PCoA.pro.df <- data.frame(rda1=procrustes.PCoA.symm$Yrot[,1], rda2=procrustes.PCoA.symm$Yrot[,2], xrda1 = procrustes.PCoA.symm$X[,1], xrda2 = procrustes.PCoA.symm$X[,2])
 PCoA.pro.df$copdcontrol <- microbiome.ps.genus.hell@sam_data$copdcaco
 PCoA.pro.df$copdcontrol <- factor(PCoA.pro.df$copdcontrol, levels = c(0, 1), labels = c("Control", "COPD"))
@@ -168,6 +171,32 @@ PCoA.pro.plot.r +
 
 
 ```
+# Figure for manuscript 
+```{r}
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+
+PCoA.pro.plot <- ggplot(PCoA.pro.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol, shape="Microbiome", fill=copdcontrol), size = 3) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol, shape="Resistome", fill=copdcontrol), size = 2) +
+  geom_segment(aes(x=rda1, y=rda2, xend=xrda1, yend=xrda2, colour=copdcontrol), arrow=arrow(length=unit(0.2, "cm")))
+
+Final.PCoa.pro <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +  # Define the color mapping
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +  # Define the shape mapping
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +  # Define the fill mapping
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.35, Significance: 6e-04", size = 16 ) +
+  guides(fill = guide_legend(override.aes = list(shape = NA)))+ # Remove the contents of the legend
+           theme(axis.text.x = element_text(size = 16), 
+                 axis.text.y = element_text(size = 16), 
+                 axis.title.x = element_text(size = 16),
+                 axis.title.y = element_text(size = 16),
+                 plot.subtitle = element_text(size=16))  # Adjust the size of x- and y-axis labels
+
+ggsave(filename = "Output_files//Procrustes//Final.PCoa.pro.png", plot = Final.PCoa.pro, width = 8, height = 6, dpi = 1000)
+
+```
+
 # Co-occurrence network 
 ## Prepare data
 ```{r}

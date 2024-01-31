@@ -234,8 +234,9 @@ FPKM_comparison <- ggplot(plot_data_FPKM, aes(x = Group, y = Total_FPKM, fill = 
 # Save the ggplot to the output_files folder
 ggsave(filename = "Output_files/FPKM_comparison.png", plot = FPKM_comparison, width = 8, height = 6, dpi = 300)
 ```
-# Additional checks for Alex 13/12/2023
+# Additional checks - FPKM per sample
 ```{r}
+
 count_below_1 <- sum(combined_total_FPKM < 1) # There are none below 1 
 hist(combined_total_FPKM, breaks = 50, main = "Histogram of raw FPKM", xlab = "FPKM")
 summary(combined_total_FPKM)
@@ -262,7 +263,7 @@ transformed_rounded_FPKM <- round(transformed_FPKM)
 hist(transformed_rounded_FPKM, breaks = 50, main = "Histogram of 10^9 transformed, then rounded FPKM", xlab = "FPKM")
 summary(transformed_rounded_FPKM)
 ```
-# Additional checks for Alex 13/12/2023
+# Additional checks - FPKM per ARG
 ```{r}
 # Extract the OTU table
 ARG_table <- as.data.frame(otu_table(ARGcluster.aggl.noblanks))
@@ -279,6 +280,23 @@ mean(arg_fpkm_data$Total_FPKM)
 max(arg_fpkm_data$Total_FPKM)
 
 arg_below_1 <- arg_fpkm_data[arg_fpkm_data$Total_FPKM < 1, ]
+
+# zoom in on low FPKM values (up to total FPKM of 100)
+subset_data_0to100 <- arg_fpkm_data[arg_fpkm_data$Total_FPKM >= 0 & arg_fpkm_data$Total_FPKM <= 100, , drop = FALSE]
+subset_data_0to100$ARG <- rownames(subset_data_0to100)
+rownames(subset_data_0to100) <- NULL
+hist(subset_data_0to100$Total_FPKM, breaks = 30, col = "skyblue", main = "Distribution of ARG Total FPKMs (0-100)", xlab = "Total FPKM")
+plot(subset_data_0to100$ARG, subset_data_0to100$Total_FPKM, pch = 16, col = "skyblue", main = "Individual FPKM Distribution for ARGs (0-100)", xlab = "ARG", ylab = "Total FPKM")
+ggplot(subset_data_0to100, aes(x = ARG, y = Total_FPKM)) +
+  geom_point(aes(color = Total_FPKM), size = 3) +
+  scale_color_gradient(low = "skyblue", high = "darkblue") +
+  labs(title = "Total FPKM values per ARG (for ARGs with a total FPKM 0-100)", x = "", y = "Total FPKM") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+
+
+
 
 ## Round then transform the raw FPKM per ARG
 ARG_table_rounded <- as.data.frame(round(otu_table(ARGcluster.aggl.noblanks)))
@@ -307,6 +325,10 @@ min(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 median(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 mean(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 max(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
+
+
+
+
 
 ```
 

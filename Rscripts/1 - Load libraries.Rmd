@@ -31,8 +31,8 @@ library(magrittr) # For pipe operators
 library(matrixStats) # Needed for various matrix operations
 library(methods) # For defining methods for generic functions
 library(microbiomeutilities) # For heatmap building
-library(openxlsx) # For reading and writing Excel files
 library(olsrr) # For CD plots to look at influential data points in linear regression models
+library(openxlsx) # For reading and writing Excel files
 library(patchwork) # For combining ggplots
 library(pheatmap) # For creating heatmaps
 library(plyr) # For data manipulation

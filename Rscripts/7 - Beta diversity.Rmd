@@ -1365,7 +1365,7 @@ PCoA.plot.E.coli_RF_estimates <- plot_ordination(ARGcluster.aggl.noblanks.LUR.RF
         legend.title = element_text(size = 10)
     ) +
     stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions)) +
-    geom_text(x = 0.33, y = -0.5, label = paste("PERMANOVA, p-value =", E.coli_permanova_pval), size = 4, color = "black", family = "Arial") +
+    geom_text(x = 0.33, y = -0.55, label = paste("PERMANOVA, p-value =", E.coli_permanova_pval), size = 4, color = "black", family = "Arial") +
     xlab("PCoA1") +
     ylab("PCoA2") +
     coord_fixed(ratio = 1) +
@@ -1383,5 +1383,55 @@ combined_plot <- PCoA.plot.E.coli_RF_estimates +
 combined_plot
 
 ggsave("Output_files//PCoAs//PCoA.plot.E.coli_RF_estimates.png", PCoA.plot.E.coli_RF_estimates, width = 8, height = 6, dpi = 3000)
+```
+# PCoA plots for manuscript
+```{r}
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+
+# COPD vs control PCoA 
+ARGcluster.aggl.PCoA.plot.noblanks <- plot_ordination(ARGcluster.aggl.noblanks, ARGcluster.aggl.PCoA.noblanks.ordination, color = "copdcaco", shape = "copdcaco") +
+  ggtitle("Bray-Curtis PCoA - COPD vs control") +
+  labs(legend = "COPD/control status") +
+  geom_point(aes(color = copdcaco), size = 4) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(aes(label = row.names(ARGcluster.aggl.noblanks@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +
+  theme(
+    plot.title = element_text(size = 12),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10)
+  ) +
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = copdcaco, color = copdcaco)) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(x = 0.42, y = -0.47, label = paste("PERMANOVA, p-value =", Permanova_pval_COPDcontrol), size = 4, color = "black", family = "Arial") +
+  xlab("PCoA1") +
+  ylab("PCoA2") +
+  coord_fixed(ratio = 1) +
+  guides(color = guide_legend(title = "Study population"))
+
+
+# RF-modelled E. coli
+PCoA.plot.E.coli_RF_estimates <- plot_ordination(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "E.coli_RF_predictions", shape="E.coli_RF_predictions") +
+    ggtitle("Bray-Curtis PCoA - E. coli exposure") +
+    labs(legend="E. coli (RF-modelled) exposure quantiles") +
+    geom_point(size = 4) +
+    geom_text(aes(label = row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +  # Adjust the size here
+    theme(
+        plot.title = element_text(size = 12),
+        axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+    ) +
+    stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions)) +
+    geom_text(x = 0.32, y = -0.55, label = paste("PERMANOVA, p-value =", E.coli_permanova_pval), size = 4, color = "black", family = "Arial") +
+    xlab("PCoA1") +
+    ylab("PCoA2") +
+    coord_fixed(ratio = 1) +
+    guides(color = guide_legend(title = "E. coli exposure quantiles"))+
+  theme(legend.position="none")+ 
+  theme(legend.position="none")
+
 ```
 

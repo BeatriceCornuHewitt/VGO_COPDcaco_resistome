@@ -429,7 +429,7 @@ Final.ps.noblanks.exp@sam_data
 ```{r}
 # Import the LUR and RF estimates of E.coli, staph, tetW and mecA concentrations for each of the 69 participant
 # SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
-LUR_RF_residential_predictions  <- read.xlsx("Input_files//LUR_RF_models//LUR_RF_residential_predictions.xlsx")
+LUR_RF_residential_predictions  <- read.xlsx("Input_files//LUR_RF_residential_predictions_copdstatus.xlsx")
 
 LUR_RF_residential_predictions <- data.frame(LUR_RF_residential_predictions, row.names = LUR_RF_residential_predictions$X1)
 LUR_RF_residential_predictions$X1 <- NULL  

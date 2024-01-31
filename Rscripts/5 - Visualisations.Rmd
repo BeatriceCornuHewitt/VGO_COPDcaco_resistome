@@ -211,7 +211,8 @@ fill_colours10 <- c("#cc3311", "#4a86e8", "#ff9900", "#669966", "#33bbee", "#c77
 
 # Generate the stacked barplot at the top 10 ARG cluster level
 ARGcluster.top10@sam_data$copdcaco <- revalue(ARGcluster.top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
-
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
 ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
   ggtitle("Relative Abundance of Top 10 ARG Clusters in COPD and Control Groups") +
     scale_fill_manual(values = fill_colours10) +  # Use your custom color palette
@@ -341,7 +342,7 @@ fill_colours <- c("#f8766d", "#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","
 # Reorder so that control comes first, then COPD
 AMRclass.relative.noblanks@sam_data$copdcaco <- revalue(AMRclass.relative.noblanks@sam_data$copdcaco, c('1' ='COPD', '0' = 'Control'))
 
-AMRclass.aggl.noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative, "copdcaco", level = "ARG_class") +
+AMRclass.aggl.noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
   scale_fill_manual(values = fill_colours) +  # Use the extracted colors
   labs(fill = "AMR class") +
