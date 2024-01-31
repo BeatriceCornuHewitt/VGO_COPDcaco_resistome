@@ -1,0 +1,9 @@
+cff-version: 1.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Cornu Hewitt"
+  given-names: "Beatrice"
+  orcid: "https://orcid.org/0000-0002-4594-4393"
+title: "VGO_COPDcaco_resistome"
+version: 1.0
+url: "https://github.com/BeatriceCornuHewitt/VGO_COPDcaco_resistome"
