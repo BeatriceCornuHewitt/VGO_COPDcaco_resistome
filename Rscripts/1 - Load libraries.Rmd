@@ -4,54 +4,48 @@ output: html_notebook
 ---
 # Required packages
 ```{r}
-library(BiocManager) # For managing Bioconductor packages
-library(car) # For various statistical tools
-library(corrplot) # For correlation plots 
-library(cowplot) # An addition to ggplot package
-library(dplyr)# data manipulation
-library(DT) # For interactive tables
-library(eulerr) # For Venn diagrams
-library(forcats) # For working with categorical variables
-library(foreach) # Needed for looping construction
-library(ggplot2) # For creating static plots
-library(ggpubr) # For adding significance values to boxplots
-library(graphics) # For creating simple (non-ggplot) graphs
-library(grid) # For ggplot2 plots for procrustes analysis
-library(Hmisc) # For correlation matrix creation with p-values included
-library(igraph) # For co-occurrence network visualisation
-library(knitr) # Needed for creation of the notebook (?)
-library(lattice) # Data visualisation
-library(magrittr) # For pipe operators 
-library(matrixStats) # Needed for various matrix operations
-library(methods) # For defining methods for generic functions
-library(olsrr) # For CD plots to look at influential data points in linear regression models
-library(openxlsx) # For reading and writing Excel files
-library(patchwork) # For combining ggplots
-library(pheatmap) # For creating heatmaps
-library(plyr) # For data manipulation
-library(plotly) # For interactive web graphics 
-library(purr) # For functional programming tools
-library(RColorBrewer) # Colour palettes for graphs
-library(readr) # For reading rectangular data
-library(rgexf) # To build graph.ml files for upload into Gephi, etc.
-library(Rtools) # For organising data in structure suitable for analysis
-library(scales) # Needed for oob parameter
-library(stats) # For statistical functions
-library(stringr) # For working with strings
-library(textshape)
-library(tibble) # For creating and modifying tibbles
-library(tidyverse) # For organising data in structure suitable for analysis
-library(tidyr) # For data tidying
-library(utils) # For utility functions
-library(vegan) # Tools for microbiome analyses 
-library(viridis) # For color scales
-library(visNetwork) # For cooccurrence network visualisation
-library(writexl) # For writing Excel files
-library(patchwork) # For combining plots together
-library(phyloseq) # For microbiome analyses
-library(decontam) # To check for data contaminants
-library(microbiome)
-library(DESeq2) #For DESeq differntial abundance analyses
-library(apeglm) # for log-fold change estimation when using DESeq
-library(ALDEx2)
+library(BiocManager) # Access the Bioconductor Project Package Repository CRAN v1.30.22
+library(car) # Companion to Applied Regression CRAN v3.1-2
+library(corrplot) # Visualization of a Correlation Matrix CRAN v0.92
+library(cowplot) # Streamlined Plot Theme and Plot Annotations for 'ggplot2' CRAN v1.1.1
+library(dplyr) # A Grammar of Data Manipulation CRAN v1.1.4
+library(DT) # A Wrapper of the JavaScript Library 'DataTables' CRAN v0.30
+library(forcats) # Tools for Working with Categorical Variables (Factors) CRAN v1.0.0
+library(foreach) # Provides Foreach Looping Construct CRAN v1.5.2
+library(ggplot2) # Create Elegant Data Visualisations Using the Grammar of Graphics CRAN v3.4.4
+library(ggpubr) # 'ggplot2' Based Publication Ready Plots CRAN v0.6.0
+library(graphics) # R functions for base graphics 4.3.2
+library(grid)
+library(Hmisc) # Harrell Miscellaneous CRAN v5.1-1
+library(igraph) # Network Analysis and Visualization CRAN v1.5.1
+library(knitr) # A General-Purpose Package for Dynamic Report Generation in R CRAN v1.45
+library(lattice) # Trellis Graphics for R CRAN v0.21-9
+library(magrittr) # A Forward-Pipe Operator for R CRAN v2.0.3
+library(matrixStats) # Functions that Apply to Rows and Columns of Matrices (and to Vectors) CRAN v1.1.0
+library(olsrr) # Tools for Building OLS Regression Models CRAN v0.5.3 
+library(openxlsx) # Read, Write and Edit xlsx Files CRAN v4.2.5.2 
+library(patchwork) # The Composer of Plots CRAN v1.1.3 # The Composer of Plots CRAN v1.1.3 
+library(pheatmap) # Pretty Heatmaps CRAN v1.0.12 
+library(plyr) # Tools for Splitting, Applying and Combining Data CRAN v1.8.9     
+library(plotly) # Create Interactive Web Graphics via 'plotly.js' CRAN v4.10.3     
+library(RColorBrewer) # ColorBrewer Palettes CRAN v1.1-3 
+library(readr) # Read Rectangular Text Data CRAN v2.1.4
+library(rgexf) # not installed on this machine vNA
+library(Rtools) # not installed on this machine vNA
+library(scales) # Scale Functions for Visualization CRAN v1.3.0
+library(stats) # Statistical calculations and random number generation v4.3.2
+library(stringr) # Simple, Consistent Wrappers for Common String Operations CRAN v1.5.1
+library(tibble) # Simple Data Frames CRAN v3.2.1
+library(tidyverse) # Easily Install and Load the 'Tidyverse' CRAN v2.0.0
+library(tidyr) # Tidy Messy Data CRAN v1.3.0
+library(vegan) # Community Ecology Package CRAN v2.6-4
+library(viridis) # Colorblind-Friendly Color Maps for R CRAN v0.6.4
+library(visNetwork) # not installed on this machine vNA
+library(writexl) # Export Data Frames to Excel 'xlsx' Format CRAN v1.4.2
+library(patchwork) # The Composer of Plots CRAN v1.1.3
+library(phyloseq) # Handling and analysis of microbiome data Bioconductor v1.46.0
+library(decontam) # Identify Contaminants Bioconductor v1.22.0
+library(microbiome) # Microbiome Analytics Bioconductor v1.24.0
+library(DESeq2) # Differential gene expression analysis based on the negative binomial distribution Bioconductor v1.42.0
+library(ALDEx2) # Analysis Of Differential Abundance Taking Sample and Scale Variation Into Account Bioconductor v1.34.0 
 ```
