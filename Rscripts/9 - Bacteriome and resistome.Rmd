@@ -6,9 +6,10 @@ output: html_notebook
 ## Prepare data
 ```{r}
 # Procrustes plot used to look at the association between the resistome (90% ID clustering) and the bacteriome
-microbiome.ps <- readRDS("Input_files//ps_COPD_d2_f_01%in2samples_08APR2021")
+microbiome.ps <- readRDS("..//Data//ps_COPD_d2_f_01%in2samples_08APR2021")
 microbiome.ps # Inspect microbiome phyloseq object 
 # There are 356 samples in total as microbiome data is longitudinal with 3 time points therefore more than one sample per sample ID
+saveRDS(microbiome.ps, file = "..//Data//raw//ps_COPD_d2_f_01%in2samples_08APR2021.rds")
 
 # Create a vector of sample IDs and then prune the microbiome ps to just include these samples 
 vector.sampleIDs <- c('10279','10839','11143','11502','11588','11814','12927','12965','12980','13571','13743','13764','13908','14587','15035','15391','15446','15573','16236','16716','16994','17053','17918','18439','18859','19586','20148','20264','20278','20407','21130','21167','21397','21548','21696','27187','27446','27641','27984','28038','29117','29401','29593','29745','30113','30148','30256','30491','30972','31465','31516','31563','31637','32372','32530','33076','33579','35287','35537','36022','36166','36424','36503','36845','37083','37250','38249','38407','38776','veldbl16','veldbl3','veldbl5')
