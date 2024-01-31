@@ -7,14 +7,13 @@ output: html_notebook
 # Show available ranks in the dataset
 rank_names(Final.ps)
 
-# create a table to show the number of ARG clusters categorised into each AMR class in this data set
-table('tax_table'(ARGcluster.aggl)[, "ARG_class"], exclude = NULL)
-# This shows us that all ARGs have been assigned to an AMR class (as no NAs present here so no artifacts in the data)
-# We have a total of 85 genes which are categorised into 8 AMR classes 
+# Table to show the number of ARG clusters categorised into each AMR class 
+table("tax_table"(ARGcluster.aggl)[, "ARG_class"], exclude = NULL)
+# 85 ARGs categorised into 8 AMR classes 
 ```
 # Abundance of ARG clusters across COPD, control and blank groups
 ```{r}
-# Make new ps object with only COPD patients in this
+# New ps with only COPD patients
 COPD_ps <- subset_samples(ARGcluster.aggl, copdcaco == "1")
 # Access the otu_table and tax_table from the COPD_ps phyloseq object
 COPD_otu_table <- otu_table(COPD_ps)
@@ -38,27 +37,27 @@ control_ARGCluster_names <- as.character(control_tax_table[control_non_zero_taxa
 # Print the ARGCluster names
 print(control_ARGCluster_names)
 
-# blanks 
-blanc_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
+# Blanks 
+blank_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blank")
 # Access the otu_table and tax_table from the COPD_ps phyloseq object
-blancs_otu_table <- otu_table(blanc_ps)
-blancs_tax_table <- tax_table(blanc_ps)
+blanks_otu_table <- otu_table(blank_ps)
+blanks_tax_table <- tax_table(blank_ps)
 # Get the row indices of taxa with at least one non-zero value
-blancs_non_zero_taxa <- which(rowSums(blancs_otu_table > 0) > 0)
+blanks_non_zero_taxa <- which(rowSums(blanks_otu_table > 0) > 0)
 # Extract the taxa names with ARGCluster information
-blancs_ARGCluster_names <- as.character(blancs_tax_table[blancs_non_zero_taxa, "ARGCluster"])
+blanks_ARGCluster_names <- as.character(blanks_tax_table[blanks_non_zero_taxa, "ARGCluster"])
 # Print the ARGCluster names
-print(blancs_ARGCluster_names)
+print(blanks_ARGCluster_names)
 
 # convert matrices to dataframes
 df_copd_ARGclusters <- as.data.frame(COPD_ARGCluster_names)
 df_control_ARGclusters <- as.data.frame(control_ARGCluster_names)
-df_blanc_ARGclusters <- as.data.frame(blancs_ARGCluster_names)
+df_blank_ARGclusters <- as.data.frame(blanks_ARGCluster_names)
 
 # Export data frames to Excel files
-write.xlsx(df_copd_ARGclusters, "Output_files//Basic_resistome_explorations//df_copd_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_copd_ARGclusters, "Data//processed//Basic_resistome_explorations//df_copd_ARGclusters.xlsx", rowNames = FALSE)
 write.xlsx(df_control_ARGclusters, "Output_files//Basic_resistome_explorations//df_control_ARGclusters.xlsx", rowNames = FALSE)
-write.xlsx(df_blanc_ARGclusters, "Output_files//Basic_resistome_explorations//df_blanc_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_blank_ARGclusters, "Output_files//Basic_resistome_explorations//df_blank_ARGclusters.xlsx", rowNames = FALSE)
 ```
 ## 16S qPCR DNA load across COPD, control and blank groups
 ```{r}
@@ -89,7 +88,8 @@ p_value <- wilcox_test_result$p.value
 
 # Create boxplot comparing bacterial load between COPD and control groups
 plot_data <- data.frame(
-  Group = c(rep("COPD", length(copd_data@sam_data$qPCR_16S_ngml)), rep("Control", length(control_data@sam_data$qPCR_16S_ngml))),
+  Group = c(rep("COPD", length(copd_data@sam_data$qPCR_16S_ngml)),
+            rep("Control", length(control_data@sam_data$qPCR_16S_ngml))),
   Bacterial_Load = c(copd_data@sam_data$qPCR_16S_ngml, control_data@sam_data$qPCR_16S_ngml)
 )
 
@@ -127,7 +127,8 @@ ARGcluster.aggl.FPK # Now 85 taxa (as before)
 blanks <- c("veldbl16", "veldbl3", "veldbl5")
 
 ARGcluster.aggl.FPK.noblanks <- ARGcluster.aggl.FPK
-ARGcluster.aggl.FPK.noblanks <-  prune_samples(!sample_names(ARGcluster.aggl.FPK.noblanks)%in%blanks, ARGcluster.aggl.FPK.noblanks) # Now 69 samples as we want
+ARGcluster.aggl.FPK.noblanks <-  prune_samples(!sample_names(ARGcluster.aggl.FPK.noblanks) 
+                                               %in% blanks, ARGcluster.aggl.FPK.noblanks)
 
 # Now can compute FPK per individual 
 # Subset the data into COPD and control groups
@@ -136,9 +137,16 @@ control_data_FPK <- subset_samples(ARGcluster.aggl.FPK.noblanks, copdcaco == 0)
 
 # Function to calculate total FPKM for each individual
 calculate_total_FPK <- function(physeq_data) {
+#' @title Calculates total FPK per sample
+#' @description This function takes a phyloseq object 
+#' and computes the total FPK per sample in the phyloseq.
+#' It then returns the total FPK per sample.
+#' @param physeq_data The phyloseq object
+#' @return The total FPK value per sample.
   total_FPK <- rowSums(otu_table(physeq_data))
   return(total_FPK)
 }
+?calculate_total_FPK
 
 # Calculate total FPKM for COPD and control groups
 copd_total_FPK <- calculate_total_FPK(copd_data_FPK)
@@ -149,7 +157,7 @@ summary(control_total_FPK)
 
 hist(copd_total_FPK)
 hist(control_total_FPK)
-# both not normal distibution - should test with wilcoxon rank sum test
+# both not normal distribution - should test with wilcoxon rank sum test
 
 # Create a data frame for boxplot visualization
 plot_data_FPK <- data.frame(
@@ -339,7 +347,7 @@ Final.ps.round <- Final.ps
 Final.ps.round@otu_table@.Data <- round(Final.ps.round@otu_table@.Data) 
 
 # rename the copdcaco categories
-Final.ps.round@sam_data$copdcaco <- revalue(Final.ps.round@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blanc'= 'blank'))
+Final.ps.round@sam_data$copdcaco <- revalue(Final.ps.round@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blank'= 'blank'))
 
 # Rarefaction curves on rounded data
 # Create rarefraction function (adapted from vegan `rarecurve` function)

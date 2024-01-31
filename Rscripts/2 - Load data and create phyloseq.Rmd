@@ -9,28 +9,22 @@ seed <- 2202
 set.seed(seed)
 
 # input for ps object 
-metafile <- "Input_files//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab"
-argclusterfile <- "Input_files//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab"
-argmappingfile <- "Input_files//02e_TotalResfinderMapped_v3.tab"
+here()
+metafile <- here("Data//Raw//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab")
+argclusterfile <- here("Data//Raw//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab")
+argmappingfile <- here("Data//Raw//02e_TotalResfinderMapped_v3.tab")
 ```
 # Read in the raw data
 ```{r}
 # Data were pre-processed from individual excel sheets (metadata and 'otu data') and the refined ARG clustering spreadsheet (ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b)
-getwd()
 metadata <- read.csv(metafile, header=TRUE, sep="\t", row.names=1 )
-metadata
-
 ARGclusters <- read.csv(argclusterfile, header=TRUE, sep="\t", row.names=1 )
-ARGclusters
-
 ARG.long <- read.csv(argmappingfile, header=TRUE, sep="\t")
-head(ARG.long)
 
-# Make matrix of 'otu_data' - with samples in rows and ARGs in columns
+# Make matrix of 'otu_data' - samples in rows and ARGs in columns
 ARGcount <- ARG.long %>%
     select(SampleName, ARGname, MappedCount) %>% 
     pivot_wider(names_from=ARGname, values_from=MappedCount, values_fill=0)
-ARGcount
 ```
 
 # Create PS objects 

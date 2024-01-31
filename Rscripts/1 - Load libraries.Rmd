@@ -4,18 +4,12 @@ output: html_notebook
 ---
 # Required packages
 ```{r}
-.libPaths() # location of where packages are downloaded/saved on my pc
-# Load required associated libraries
 library(BiocManager) # For managing Bioconductor packages
 library(car) # For various statistical tools
-library(cooccur) # For co-occurrence networks
 library(corrplot) # For correlation plots 
-library(cowplot) # An addition to ggplot package - helps produce high-quality graphs (extra features)
-library(cooccur) # For cooccurrence network analysis 
+library(cowplot) # An addition to ggplot package
 library(dplyr)# data manipulation
 library(DT) # For interactive tables
-library(DiagrammeR) # For creating diagrams and flowcharts
-library(e1071) # For support vector machine
 library(eulerr) # For Venn diagrams
 library(forcats) # For working with categorical variables
 library(foreach) # Needed for looping construction
@@ -30,7 +24,6 @@ library(lattice) # Data visualisation
 library(magrittr) # For pipe operators 
 library(matrixStats) # Needed for various matrix operations
 library(methods) # For defining methods for generic functions
-library(microbiomeutilities) # For heatmap building
 library(olsrr) # For CD plots to look at influential data points in linear regression models
 library(openxlsx) # For reading and writing Excel files
 library(patchwork) # For combining ggplots
@@ -56,16 +49,9 @@ library(visNetwork) # For cooccurrence network visualisation
 library(writexl) # For writing Excel files
 library(patchwork) # For combining plots together
 library(phyloseq) # For microbiome analyses
-
-# BiocManager::install("decontam")
 library(decontam) # To check for data contaminants
-# BiocManager::install("microbiome")
 library(microbiome)
-# BiocManager::install("DESeq2")
 library(DESeq2) #For DESeq differntial abundance analyses
-# BiocManager::install("apeglm")
 library(apeglm) # for log-fold change estimation when using DESeq
-# BiocManager::install("ALDEx2")
 library(ALDEx2)
-
 ```

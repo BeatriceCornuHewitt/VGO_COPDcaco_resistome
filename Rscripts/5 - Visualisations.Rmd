@@ -45,9 +45,6 @@ COPDcontrolblank_plots_absolute <- combined_plots_absolute +
 COPDcontrolblank_plots_absolute
 ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//COPDcontrolblank_plots_absolute.png",width = 8, height = 4,dpi = 3000)
 
-
-
-
 # Combining groups into one bar 
 # Create function to produce bar charts based on absolute abundance
 bar.graphs.absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
