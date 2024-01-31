@@ -19,7 +19,7 @@
 .Renviron
 
 # Other 
-/x superseded
+x\ superseded/
 *.csv
 *.xlsx
 *.html
