@@ -72,3 +72,46 @@ patch1 <- (Shannon.diversity.plot|Simpson.diversity.plot|Observed.diversity.plot
                                   (PCoA|Final.PCoa.pro2) + plot_layout(guides = "collect")
 
 ```
+# Stacked bar plots
+```{r}
+# AMR class 
+AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class")+
+  scale_fill_manual(values = fill_colours) +  # Use the extracted colors
+  labs(fill = "AMR class", title = NULL) +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),  
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right")
+AMRclass_aggl_noblanks.groupedcopdcaco
+
+# ARG cluster level 
+# Prune ps object to contain only the top 10 ARG clusters
+ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(Final.ps.top10ARGClusters), decreasing = TRUE))[1:10], Final.ps.top10ARGClusters)
+
+fill_colours10 <- c("#cc3311", "#4a86e8", "#ff9900", "#669966", "#33bbee", "#c77cff", "#bb5566", "#003399", "#ff33cc", "#ffcc00")
+
+ARGcluster.top10@sam_data$copdcaco <- revalue(ARGcluster.top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
+
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
+    scale_fill_manual(values = fill_colours10) +  # Use your custom color palette
+  labs(fill = "ARG Cluster", title = NULL) +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),
+        legend.text = element_text(size = 15),
+        legend.position = "right") 
+ARGcluster.barchart
+
+# Patchwork to join the plots together
+patched_barcharts <- (AMRclass_aggl_noblanks.groupedcopdcaco |ARGcluster.barchart)
+patched_bar_labelled <- patched_barcharts + plot_annotation(tag_levels = 'a')
+
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patched_bar_labelled.png", width = 12, height = 6, plot = patched_bar_labelled, dpi = 1000)
+
+
+```
+
