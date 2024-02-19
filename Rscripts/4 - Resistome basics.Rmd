@@ -38,7 +38,7 @@ control_ARGCluster_names <- as.character(control_tax_table[control_non_zero_taxa
 print(control_ARGCluster_names)
 
 # Blanks 
-blank_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blank")
+blank_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
 # Access the otu_table and tax_table from the COPD_ps phyloseq object
 blanks_otu_table <- otu_table(blank_ps)
 blanks_tax_table <- tax_table(blank_ps)
@@ -244,7 +244,6 @@ ggsave(filename = "Output_files/FPKM_comparison.png", plot = FPKM_comparison, wi
 ```
 # Additional checks - FPKM per sample
 ```{r}
-
 count_below_1 <- sum(combined_total_FPKM < 1) # There are none below 1 
 hist(combined_total_FPKM, breaks = 50, main = "Histogram of raw FPKM", xlab = "FPKM")
 summary(combined_total_FPKM)
@@ -302,10 +301,6 @@ ggplot(subset_data_0to100, aes(x = ARG, y = Total_FPKM)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
-
-
-
-
 ## Round then transform the raw FPKM per ARG
 ARG_table_rounded <- as.data.frame(round(otu_table(ARGcluster.aggl.noblanks)))
 ARG_table_rounded_transformed <-  ARG_table_rounded* 1e9
@@ -333,13 +328,7 @@ min(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 median(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 mean(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 max(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
-
-
-
-
-
 ```
-
 # Rarefaction curves
 ```{r}
 # Since there are no FPKM values <1, instead of the multiply by billion method, we can just round for alpha diversity calculations
@@ -468,9 +457,11 @@ toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
   return( toplist )
 }
 
+# COPD and controls and blanks
 top10.ARGclusters.overall<- toptaxa (ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.overall
 
+# COPD and controls (no blanks)
 top10.ARGclusters.overall.noblanks<- toptaxa (ARGcluster.aggl.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.overall.noblanks
 
@@ -481,6 +472,10 @@ top10.ARGclusters.COPD
 # Top 10 in control samples 
 top10.ARGclusters.control<- toptaxa (control_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.control
+
+# Top 10 in blank samples
+top10.ARGclusters.blanks <- toptaxa (blank_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.blanks
 
 
 # Present as actual ARG cluster names 
@@ -545,6 +540,39 @@ ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
   scale_x_discrete(labels = c("COPD" = "COPD", "control" = "Control"))
 
 ARGcluster.barchart
-
 ggsave("ARGcluster.barchart.png",width = 7, height = 5,dpi = 300)
 ```
+# Core resistome
+```{r}
+# COPD
+# Calculate compositional version of the data
+COPD_ps_rel <- microbiome::transform(COPD_ps, "compositional")
+# Controls 
+control_ps_rel <- microbiome::transform(control_ps, "compositional")
+# Blanks
+blank_ps_rel <- microbiome::transform(blank_ps, "compositional")
+
+# Identify core taxa
+core_ARGs_COPD <- core_members(COPD_ps_rel, detection = 1.4781e-06, prevalence = 90/100)
+core_ARGs_control <- core_members(control_ps_rel, detection = 1.4781e-06, prevalence = 90/100)
+core_ARGs_blank <- core_members(blank_ps_rel, detection = 1.4781e-06, prevalence = 90/100)
+
+# Convert ARG names to ARG cluster names
+tt <- data.frame( tax_table( ARGcluster.aggl ) )
+tt$ARGCluster[ row.names(tt) %in% core_ARGs_COPD] 
+tt$ARGCluster[ row.names(tt) %in% core_ARGs_control]
+tt$ARGCluster[ row.names(tt) %in% core_ARGs_blank]
+
+# Create Venn diagram with core resistome
+library(ggvenn)
+library(RColorBrewer)
+COPD <- c("cfxA_clust","mef(A)_clust", "msr(D)","tet(32)","tet(M)","tet(O)", "tet(Q)", "tet(W)")
+Controls <- c("cfxA_clust","mef(A)_clust", "msr(D)","tet(32)","tet(M)","tet(O)", "tet(Q)", "tet(W)")
+Blanks <- c("tet(A)","tet(C)")
+
+x <- list(COPD=COPD , Controls=Controls , Blanks=Blanks)
+
+ggvenn(x, show_elements = T, label_sep = "\n", fill_color = brewer.pal(name="Set2", n=3))
+# For publication supplementary figure, this was made in powerpoint
+```
+
