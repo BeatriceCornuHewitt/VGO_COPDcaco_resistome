@@ -163,9 +163,10 @@ wilcox.test(metadata.final.ps.billion.noblanks$Observed~metadata.final.ps.billio
 wilcox.test(metadata.final.ps.billion.noblanks$SimpsonEvenness~metadata.final.ps.billion.noblanks$copdcaco)
 
 # Add t-test results to the boxplot
-Shannon.diversity.plot.pval <- Shannon.diversity.plot +  stat_compare_means(method = "t.test", size=8, label.x = 0.6, label.y = 3.25)
-Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=8, label.x = 0.6, label.y = 0.42)
-Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=8,label.x = 0.6, label.y = 100)
+Shannon.diversity.plot.pval <- Shannon.diversity.plot +
+  stat_compare_means(method = "t.test", size = 5, label.x = 0.6, label.y = 3.4)
+Simpson.diversity.plot.pval <- Simpson.diversity.plot +  stat_compare_means(method = "wilcox.test", size=5, label.x = 0.6, label.y = 0.42)
+Observed.diversity.plot.pval <- Observed.diversity.plot + stat_compare_means(method = "wilcox.test", size=5,label.x = 0.6, label.y = 100)
 
 ggsave("Output_files//Alpha_diversity//Shannon_diversity_plot.png", Shannon.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
 ggsave("Output_files//Alpha_diversity//Simpson_diversity_plot.png", Simpson.diversity.plot.pval, dpi = 1000, width = 10, height = 8)
