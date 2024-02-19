@@ -4,32 +4,44 @@ output: html_notebook
 ---
 # Stacked bar charts
 ## Absolute abundances
+### AMR class
+#### Individual sample bars
 ```{r}
-# Create ggplot for COPD cases
-AMRclass.absolute.copd <- AMRclass_aggl
+# COPD cases
+AMRclass.absolute.copd <- AMRclass.aggl
+# Prune ps to keep only COPD cases
 AMRclass.absolute.copd <- prune_samples(sample_data(AMRclass.absolute.copd)$copdcaco == "1", AMRclass.absolute.copd)
+# Make bar plot
 AMRclass.absolute.bars.copd <- plot_bar(AMRclass.absolute.copd, fill = "ARG_class") +
   labs(title = "COPD Only") +
   theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8)) 
-ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//AMRclass.absolute.bars.copd.png",width = 8, height = 4,dpi = 3000)
+# Save plot as svg
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.absolute.bars.copd.svg", plot = AMRclass.absolute.bars.copd)
 
-# Create ggplot for Controls
-AMRclass.absolute.control <- AMRclass_aggl
+
+# Controls
+AMRclass.absolute.control <- AMRclass.aggl
+# Prune ps to keep only controls
 AMRclass.absolute.control <- prune_samples(sample_data(AMRclass.absolute.control)$copdcaco == "0", AMRclass.absolute.control)
-AMRclass.absolute.bars.control <- plot_bar(AMRclass.absolute.control, fill = "ARG_class") +
-  labs(title = "Control Only") +
-  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
-ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//AMRclass.absolute.bars.control.png",width = 8, height = 4,dpi = 3000)
+# Create bar plot
+AMRclass.absolute.bars.control <- plot_bar(AMRclass.absolute.control,
+                                           fill = "ARG_class")+ labs(title = "Control Only") + theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
+# Save plot as svg
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.absolute.bars.control.svg", plot = AMRclass.absolute.bars.control)
 
-# Create ggplot for Blanks
-AMRclass.absolute.blanks <- AMRclass_aggl
+
+# Blanks
+AMRclass.absolute.blanks <- AMRclass.aggl
+# Prune ps to keep only controls
 AMRclass.absolute.blanks <- prune_samples(sample_data(AMRclass.absolute.blanks)$copdcaco == "blanc", AMRclass.absolute.blanks)
-AMRclass.absolute.bars.blanks <- plot_bar(AMRclass.absolute.blanks, fill = "ARG_class") +
-  labs(title = "Blanks Only") +
+# Create bar plot
+AMRclass.absolute.bars.blanks <- plot_bar(AMRclass.absolute.blanks, 
+                                          fill = "ARG_class") + labs(title = "Blanks Only") +
   theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
-ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//AMRclass.absolute.bars.blanks.png",width = 8, height = 4,dpi = 3000)
+# Save as svg
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.absolute.bars.blanks.svg", plot = AMRclass.absolute.bars.blanks)
 
-# Combine the plots using patchwork
+# Combine plots using patchwork
 combined_plots_absolute <- (
   AMRclass.absolute.bars.control|
   AMRclass.absolute.bars.copd|
@@ -42,19 +54,21 @@ common_y_axis_label <- "Abundance"
 COPDcontrolblank_plots_absolute <- combined_plots_absolute +
   plot_layout(ncol = 3, byrow = TRUE, guides = "collect") +
   plot_annotation(title = "Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
-COPDcontrolblank_plots_absolute
-ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//COPDcontrolblank_plots_absolute.png",width = 8, height = 4,dpi = 3000)
+# Save combined plots as svg
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/COPDcontrolblank_plots_absolute.svg", plot = COPDcontrolblank_plots_absolute)
 
-# Combining groups into one bar 
-# Create function to produce bar charts based on absolute abundance
-bar.graphs.absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
+```
+#### Grouped bars
+```{r}
+# Function to create grouped bar charts based on absolute abundance
+bar_graphs_absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
   if (level == "Species") {
     print("Error this level is too fine for amplicon sequencing")
   } else if (var1 == "ungrouped") {
     physeqxu <- tax_glom(physeq, level)
     physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
     barchartxu <- plot_bar(physeqxu, fill = level) +
-      labs(x = "COPD or control samples",
+      labs(x = "Study population",
            y = "Absolute abundance",
            title = paste("Top", displayx, level, "ungrouped")) +
       scale_fill_brewer(palette = "Spectral")
@@ -65,7 +79,7 @@ bar.graphs.absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10
     physeqg <- tax_glom(physeqm, level)
     physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
     grouped_bar <- plot_bar(physeqg, fill = level) +
-      labs(x = "COPD, control or blank samples",
+      labs(x = "Study population",
            y = "Absolute abundance",
            title = paste("Top", displayx, level, sep = " ")) +
       scale_fill_brewer(palette = "Spectral")
@@ -73,8 +87,8 @@ bar.graphs.absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10
   }
 }
 
-
-AMRclass_absolute_bars_groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl, "copdcaco", "ARG_class") +
+# COPD, control and blanks
+AMRclass_absolute_bars_groupedcopdcaco <- bar_graphs_absolute(AMRclass.aggl, "copdcaco", "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
   labs(fill = "AMR class") +
   theme(axis.text = element_text(size = 15),
@@ -86,22 +100,154 @@ AMRclass_absolute_bars_groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl, "co
         legend.position = "right") +
   scale_x_discrete(labels = c("Control", "COPD", "Blank"))
 
-AMRclass.absolute.bars_groupedcopdcaco
-ggsave("Output_files//AMR_abundance_plots//Absolute_abundances//AMRclass.absolute.bars_groupedcopdcaco.png",width = 7, height = 5,dpi = 3000)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.absolute.bars_groupedcopdcaco.svg", plot = AMRclass.absolute.bars_groupedcopdcaco)
 
-
-# New plot (no blanks, same colours as individual plots)
+# COPD and control
 n_colors <- length(unique(AMRclass.absolute.bars.copd$data$ARG_class))
 color_palette <- viridis(n_colors)
-# Remove blanks from dataset
-AMRclass_aggl_noblanks <- AMRclass_aggl
-AMRclass_aggl_noblanks <- prune_samples(!sample_data(AMRclass_aggl_noblanks)$copdcaco == "blanc", AMRclass_aggl_noblanks)
+# Remove blanks 
+AMRclass.aggl_noblanks <- AMRclass.aggl
+AMRclass.aggl_noblanks <- prune_samples(!sample_data(AMRclass.aggl_noblanks)$copdcaco == "blanc", AMRclass.aggl_noblanks)
 # Extract the fill colours from the previous plots to match
-fill_colours <- c("#f8766d", "#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#c77cff","#ff61cc")
-# Reorder so that control comes first, then COPD
-AMRclass_aggl_noblanks@sam_data$copdcaco <- factor(AMRclass_aggl_noblanks@sam_data$copdcaco, levels = c("Control", "COPD"))
+fill_colours <- c("#f8766d","#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#c77cff","#ff61cc")
+# Convert copdcaco to COPD and control 
+AMRclass.aggl_noblanks@sam_data$copdcaco <- ifelse(AMRclass.aggl_noblanks@sam_data$copdcaco == 0, "Control", "COPD")
 
-AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.absolute(AMRclass_aggl_noblanks, "copdcaco", level = "ARG_class") +
+AMRclass.aggl_noblanks.groupedcopdcaco <- bar_graphs_absolute(AMRclass.aggl_noblanks, "copdcaco", level = "ARG_class") +
+  ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
+  scale_fill_manual(values = fill_colours) +  # Use the extracted colors
+  labs(fill = "AMR class") +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),
+        title = element_text(size = 17),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right")
+
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.aggl_noblanks.groupedcopdcaco.svg", plot = AMRclass.aggl_noblanks.groupedcopdcaco)
+
+```
+## Relative abundances
+### AMR class
+#### Individual sample bars
+```{r}
+AMRclass.aggl <- tax_glom(Final.ps, taxrank = rank_names(Final.ps)[1]) # Rank 1 = ARG class
+# Make counts relative
+AMRclass.relative <- transform_sample_counts(AMRclass.aggl, function(x) x / sum(x) * 100)
+
+# COPD
+AMRclass.relative.copd <- AMRclass.relative
+AMRclass.relative.copd <- prune_samples(sample_data(AMRclass.relative.copd)$copdcaco == "1", AMRclass.relative.copd)
+# Make plot 
+AMRclass.relative.bars.copd <- plot_bar(AMRclass.relative.copd, fill = "ARG_class") +
+  labs(title = "COPD Only") +
+  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8)) 
+# Save plot
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.copd.svg", plot = AMRclass.relative.bars.copd)
+
+# Controls
+AMRclass.relative.control <- AMRclass.relative
+AMRclass.relative.control <- prune_samples(sample_data(AMRclass.relative.control)$copdcaco == "0", AMRclass.relative.control)
+# Make plot 
+AMRclass.relative.bars.control <- plot_bar(AMRclass.relative.control, fill = "ARG_class") +
+  labs(title = "Control Only") +
+  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
+# Save plot
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.control.svg", plot = AMRclass.relative.bars.control)
+
+# Blanks
+AMRclass.relative.blanks <- AMRclass.relative
+AMRclass.relative.blanks <- prune_samples(sample_data(AMRclass.relative.blanks)$copdcaco == "blanc", AMRclass.relative.blanks)
+# Make plot 
+AMRclass.relative.bars.blanks <- plot_bar(AMRclass.relative.blanks, fill = "ARG_class") +
+  labs(title = "Blanks Only") +
+  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
+# Save plot
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.blanks.svg", plot = AMRclass.relative.bars.blanks)
+
+# Combine plots using patchwork
+combined_plots_relative <- (
+  AMRclass.relative.bars.copd |
+  AMRclass.relative.bars.control |
+  AMRclass.relative.bars.blanks
+)
+
+# Set a common y-axis label
+common_y_axis_label <- "Abundance"
+# Add a common title for the entire layout
+COPDcontrolblank_plots_relative <- combined_plots_relative +
+  plot_layout(ncol = 3, byrow = TRUE, guides = "collect") +
+  plot_annotation(title = "Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+# Save as png
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/COPDcontrolblank_plots_relative.svg", plot = COPDcontrolblank_plots_relative)
+
+# COPD, control and blanks all in one plot
+AMRclass.relative.bars <- plot_bar( AMRclass.relative, fill="ARG_class") +
+    labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
+AMRclass.relative.bars + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=8 ) )
+# Save as svg
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.svg", plot = AMRclass.relative.bars)
+
+# COPD and controls all in one plot
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+AMRclass.relative.noblanks <- AMRclass.relative
+AMRclass.relative.noblanks <-  prune_samples(!sample_names(AMRclass.relative)%in%blancs, AMRclass.relative)
+AMRclass.relative.noblanks;AMRclass.relative 
+# Create plot
+AMRclass.relative.bars.noblanks <- plot_bar(AMRclass.relative.noblanks, fill="ARG_class") +
+    labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
+AMRclass.relative.bars.noblanks + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=5 ) )
+# Save plot
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.noblanks.svg", plot = AMRclass.relative.bars.noblanks)
+```
+#### Grouped bars
+```{r}
+# Function to produce grouped bar charts for relative abundance
+bar.graphs.relative <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
+  if (level == "Species") {
+    print("Error this level is too fine for amplicon sequencing")
+  } else if (var1 == "ungrouped") {
+    physeqxu <- tax_glom(physeq, level)
+    # physeqxu <- transform_sample_counts(physeqxu, function(x) 100 * x/sum(x)) # removed line since I've already transformed my ps object to relative counts
+    physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
+    barchartxu <- plot_bar(physeqxu, fill = level) +
+      labs(x = "Study population",
+           y = "% of total AMR composition",
+           title = paste("Top", displayx, level, "ungrouped")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(barchartxu)
+  } else {
+    physeqm <- merge_samples(physeq, var1)
+    sample_data(physeqm)[[var1]] <- levels(sample_data(physeqm)[[var1]])
+    physeqg <- tax_glom(physeqm, level)
+    physeqg <- transform_sample_counts(physeqg, function(x) 100 * x/sum(x))
+    physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
+    grouped_bar <- plot_bar(physeqg, fill = level) +
+      labs(x = "Study population",
+           y = "% of total AMR composition",
+           title = paste("Top", displayx, level, sep = " ")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(grouped_bar)
+  }
+}
+
+
+# New plot 
+n_colors <- length(unique(AMRclass.absolute.bars.copd$data$ARG_class))
+color_palette <- viridis(n_colors)
+
+# Remove blanks from dataset
+AMRclass.relative.noblanks <- AMRclass.relative
+AMRclass.relative.noblanks <- prune_samples(!sample_data(AMRclass.relative.noblanks)$copdcaco == "blanc", AMRclass.relative.noblanks)
+
+# Extract the fill colours from the previous plots to match
+fill_colours <- c("#f8766d","#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#c77cff","#ff61cc")
+
+# Relabel copdcaco
+AMRclass.relative.noblanks@sam_data$copdcaco <- ifelse(AMRclass.aggl_noblanks@sam_data$copdcaco == 0, "Control", "COPD")
+
+AMRclass.aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
   scale_fill_manual(values = fill_colours) +  # Use the extracted colors
   labs(fill = "AMR class") +
@@ -113,10 +259,12 @@ AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.absolute(AMRclass_aggl_nobl
         legend.text = element_text(size = 15),
         legend.position = "right")
 
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars_groupedcopdcaco.svg", plot = AMRclass.relative.bars_groupedcopdcaco)
 ```
-# ARG cluster bar plots
+### ARG cluster 
+#### Individual sample bars
 ```{r}
-# Function to calculate top 10 taxa at different levels of taxonomic identification e.g. at ARG level, ARG cluster level, AMR class level etc. 
+# Function to calculate top 10 taxa at different levels of taxonomy
 toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
   if( ! is.na(samples[1]) ) {
     pstemp = prune_samples( samples, ps)
@@ -135,11 +283,11 @@ toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
   return( toplist )
 }
 
+# Remove blanks
 ARGcluster_aggl_not_clusternames <- ARGcluster_aggl
 ARGcluster_aggl_not_clusternames <- prune_samples(!sample_data(ARGcluster_aggl_not_clusternames)$copdcaco == "blanc", ARGcluster_aggl_not_clusternames)
 
-
-# Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
+# New ps object which holds only the 10 most abundant ARGs (for COPD and control samples)
 top10_ARGclusters_overall<- toptaxa(ARGcluster_aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10_ARGclusters_overall
 
@@ -223,142 +371,12 @@ ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
         legend.position = "right") 
 ARGcluster.barchart
 
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//ARGcluster90.copdcaco.barchart.png",width = 7, height = 5,dpi = 3000)
-```
-## Relative abundances 
-```{r}
-AMRclass_aggl <- tax_glom(Final.ps, taxrank = rank_names(Final.ps)[1])
-AMRclass.relative <- transform_sample_counts(AMRclass_aggl, function(x) x / sum(x) * 100)
-
-# Create ggplot for COPD cases
-AMRclass.relative.copd <- AMRclass.relative
-AMRclass.relative.copd <- prune_samples(sample_data(AMRclass.relative.copd)$copdcaco == "1", AMRclass.relative.copd)
-AMRclass.relative.bars.copd <- plot_bar(AMRclass.relative.copd, fill = "ARG_class") +
-  labs(title = "COPD Only") +
-  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8)) 
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars.copd.png",width = 7, height = 5,dpi = 3000)
-
-# Create ggplot for Controls
-AMRclass.relative.control <- AMRclass.relative
-AMRclass.relative.control <- prune_samples(sample_data(AMRclass.relative.control)$copdcaco == "0", AMRclass.relative.control)
-AMRclass.relative.bars.control <- plot_bar(AMRclass.relative.control, fill = "ARG_class") +
-  labs(title = "Control Only") +
-  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars.control.png",width = 7, height = 5,dpi = 3000)
-
-
-# Create ggplot for Blanks
-AMRclass.relative.blanks <- AMRclass.relative
-AMRclass.relative.blanks <- prune_samples(sample_data(AMRclass.relative.blanks)$copdcaco == "blanc", AMRclass.relative.blanks)
-AMRclass.relative.bars.blanks <- plot_bar(AMRclass.relative.blanks, fill = "ARG_class") +
-  labs(title = "Blanks Only") +
-  theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars.blanks.png",width = 7, height = 5,dpi = 3000)
-
-# Combine the plots using patchwork
-combined_plots_relative <- (
-  AMRclass.relative.bars.copd |
-  AMRclass.relative.bars.control |
-  AMRclass.relative.bars.blanks
-)
-
-# Set a common y-axis label
-common_y_axis_label <- "Abundance"
-
-# Add a common title for the entire layout
-COPDcontrolblank_plots_relative <- combined_plots_relative +
-  plot_layout(ncol = 3, byrow = TRUE, guides = "collect") +
-  plot_annotation(title = "Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
-COPDcontrolblank_plots_relative
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//COPDcontrolblank_plots_relative.png",width = 7, height = 5,dpi = 3000)
-
-
-# Combined
-# Sample number vs relative AMR class (COPD, controls & blanks)
-AMRclass.relative.bars <- plot_bar( AMRclass.relative, fill="ARG_class") +
-    labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
-
-AMRclass.relative.bars + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=8 ) )
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars.png",width = 7, height = 5,dpi = 3000)
-
-# Sample number vs relative AMR class (COPD & controls)
-blancs <- c("veldbl16", "veldbl3", "veldbl5")
-AMRclass.relative.noblanks <- AMRclass.relative
-AMRclass.relative.noblanks <-  prune_samples(!sample_names(AMRclass.relative)%in%blancs, AMRclass.relative)
-AMRclass.relative.noblanks;AMRclass.relative # the 3 blanks have now been removed 
-
-AMRclass.relative.bars.noblanks <- plot_bar(AMRclass.relative.noblanks, fill="ARG_class") +
-    labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
-
-AMRclass.relative.bars.noblanks + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=5 ) )
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars.noblanks.png",width = 7, height = 5,dpi = 3000)
-
-
-# Combining groups into one bar 
-# Create function to produce grouped bar charts for relative abundance
-bar.graphs.relative <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
-  if (level == "Species") {
-    print("Error this level is too fine for amplicon sequencing")
-  } else if (var1 == "ungrouped") {
-    physeqxu <- tax_glom(physeq, level)
-    # physeqxu <- transform_sample_counts(physeqxu, function(x) 100 * x/sum(x)) # removed line since I've already transformed my ps object to relative counts
-    physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
-    barchartxu <- plot_bar(physeqxu, fill = level) +
-      labs(x = "COPD, control or blank samples",
-           y = "% of total AMR composition",
-           title = paste("Top", displayx, level, "ungrouped")) +
-      scale_fill_brewer(palette = "Spectral")
-    return(barchartxu)
-  } else {
-    physeqm <- merge_samples(physeq, var1)
-    sample_data(physeqm)[[var1]] <- levels(sample_data(physeqm)[[var1]])
-    physeqg <- tax_glom(physeqm, level)
-    physeqg <- transform_sample_counts(physeqg, function(x) 100 * x/sum(x))
-    physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
-    grouped_bar <- plot_bar(physeqg, fill = level) +
-      labs(x = "COPD, control or blank samples",
-           y = "% of total AMR composition",
-           title = paste("Top", displayx, level, sep = " ")) +
-      scale_fill_brewer(palette = "Spectral")
-    return(grouped_bar)
-  }
-}
-
-
-# New plot (no blanks, same colours as individual plots)
-n_colors <- length(unique(AMRclass.absolute.bars.copd$data$ARG_class))
-color_palette <- viridis(n_colors)
-
-# Remove blanks from dataset
-AMRclass.relative.noblanks <- AMRclass.relative
-AMRclass.relative.noblanks <- prune_samples(!sample_data(AMRclass.relative.noblanks)$copdcaco == "blanc", AMRclass.relative.noblanks)
-
-# Extract the fill colours from the previous plots to match
-fill_colours <- c("#f8766d","#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#c77cff","#ff61cc")
-
-# Reorder so that control comes first, then COPD
-AMRclass.relative.noblanks@sam_data$copdcaco <- revalue(AMRclass.relative.noblanks@sam_data$copdcaco, c('1' ='COPD', '0' = 'Control'))
-
-AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class") +
-  ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
-  scale_fill_manual(values = fill_colours) +  # Use the extracted colors
-  labs(fill = "AMR class") +
-  theme(axis.text = element_text(size = 15),
-        axis.title = element_text(size = 15),
-        axis.text.x = element_text(angle = 0, hjust = 0.5),  # Align labels to the center of tick points
-        title = element_text(size = 17),
-        legend.title = element_text(size = 15),
-        legend.text = element_text(size = 15),
-        legend.position = "right")
-
-print(AMRclass.relative.bars_groupedcopdcaco)
-ggsave("Output_files//AMR_abundance_plots//Relative_abundances//AMRclass.relative.bars_groupedcopdcaco.png",width = 7, height = 5,dpi = 3000)
-
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/ARGcluster.barchart.svg", plot = ARGcluster.barchart)
 ```
 # Heatmaps
 ## ARG level (unclustered)
 ```{r}
-# Extract abundance matrix from phyloseq object - Final.ps is the ps object which is not clustered at the 90% identity level
+# Extract abundance matrix
 ARGs <- as(otu_table(Final.ps), "matrix")
 # transform into a data frame
 ARG.dataframe <-as.data.frame(ARGs)
@@ -384,14 +402,12 @@ col.clust <- hclust(ARG.BCdist.t, "aver")
 # create the heatmap with row and column dendograms
 heatmap_ARGlevel_clustered_rowcolumn <- heatmap(as.matrix(ARG.dataframe.prop), Rowv = as.dendrogram(sample.clust), Colv = as.dendrogram(col.clust), margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
 
-# Add colour code to rows to visualise whether COPD/controls/blanks cluster together (35 cases and 34 controls, 3 blanks)
-# Use 'RowSideColours' argument in the heatmap() code to do this
+# Add colour code to rows to visualise whether COPD/controls/blanks cluster together 
 metadata.final.ps <- sample_data(Final.ps)
 COPDcontrolblank <- metadata.final.ps$copdcaco 
 COPDcontrolblank<- replace(COPDcontrolblank, which(COPDcontrolblank == "0"), "blue")
 COPDcontrolblank<-replace(COPDcontrolblank, which(COPDcontrolblank == "1"), "red")
 COPDcontrolblank<-replace(COPDcontrolblank, which(COPDcontrolblank == "blanc"),"green")
-COPDcontrolblank # check that colours are allocated to the groups
 
 # Add these colour codes to the heatmap 
 heatmap_ARGlevel_clustered_colour1 <- heatmap(as.matrix(ARG.dataframe.prop), Rowv = as.dendrogram(sample.clust), Colv = as.dendrogram(col.clust), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
@@ -400,7 +416,7 @@ heatmap_ARGlevel_clustered_colour1 <- heatmap(as.matrix(ARG.dataframe.prop), Row
 ```{r}
 # Create a heatmap now on the cluster 90 level as this is a better representation of the data 
 # Extract abundance matrix from cluster 90 agglomerated ps object
-ARGclustertable <- as(otu_table(ARGcluster_aggl), "matrix")
+ARGclustertable <- as(otu_table(ARGcluster.aggl), "matrix")
 # transform into a data frame
 ARGcluster.dataframe <- as.data.frame(ARGclustertable)
 ARGcluster.dataframe
@@ -424,7 +440,7 @@ heatmap.ARGClusterlevel <- heatmap(as.matrix(ARGcluster.dataframe.prop), Rowv = 
 # Note that the samples are not in the same order as that in the matrix - heatmap() reorders both variables and observations using the BC clustering algorithm: it computes the distance between each pair of rows and columns and try to order them by similarity.
 
 
-# Using tutorial: https://slowkow.com/notes/pheatmap-tutorial/
+# Using tutorial: https:/slowkow.com/notes/pheatmap-tutorial/
 # Use the data frame which I created previously for ARG cluster level 
 ARGcluster.dataframe.prop
 # convert ARG Cluster df to matrix form - this is needed for pheatmap function
@@ -453,7 +469,7 @@ pheatmap(ARGcluster.prop.mat, cluster_rows=FALSE, cluster_cols=FALSE)
 # Create heatmap including all ARG clusters. BC distance clustering, colour coding for COPD/control/blank samples on y-axis
 ARG_cluster_heatmap <- pheatmap(
   mat = ARGcluster.prop.mat,
-  color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https://www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour), this one is colour blind friendly
+  color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https:/www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour), this one is colour blind friendly
   border_color = "grey60",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
@@ -471,12 +487,12 @@ ARG_cluster_heatmap <- pheatmap(
   main= "Heatmap at ARG cluster level", 
   legend_title = "Sample")
 
-ggsave("..//Output_files//Heatmaps//ARG_cluster_heatmap.png", ARG_cluster_heatmap, width = 18, height = 12)
+ggsave("../Output_files/Heatmaps/ARG_cluster_heatmap.svg", ARG_cluster_heatmap, width = 18, height = 12)
 ```
 ## Heatmap at AMR class level 
 ```{r}
 # Create a heatmap on the AMR class level
-AMRclasstable <- as(otu_table(AMRclass_aggl), "matrix")
+AMRclasstable <- as(otu_table(AMRclass.aggl), "matrix")
 # transform into a data frame
 AMRclass.dataframe <-as.data.frame(AMRclasstable)
 AMRclass.dataframe
@@ -522,7 +538,7 @@ AMRclass.BCdist.cols <- vegdist(t(AMRclass.dataframe.prop), method="bray", binar
 # Create heatmap including all ARG clusters. BC distance clustering, colour coding for COPD/control/blank samples on y-axis
 pheatmap(
   mat = AMRclass.prop.mat,
-  color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https://www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour)
+  color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https:/www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour)
   border_color = "grey60",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
@@ -539,4 +555,79 @@ pheatmap(
   main= "Heatmap at AMR class level"
 )
 ```
+# Plot for manuscript
+```{r}
+# Stacked bar plots
+```{r}
+
+bar.graphs.relative <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
+  if (level == "Species") {
+    print("Error this level is too fine for amplicon sequencing")
+  } else if (var1 == "ungrouped") {
+    physeqxu <- tax_glom(physeq, level)
+    # physeqxu <- transform_sample_counts(physeqxu, function(x) 100 * x/sum(x)) # removed line since I've already transformed my ps object to relative counts
+    physeqxu <- prune_taxa(names(sort(taxa_sums(physeqxu), TRUE))[1:displayx], physeqxu)
+    barchartxu <- plot_bar(physeqxu, fill = level) +
+      labs(x = "Study population",
+           y = "% of total AMR composition",
+           title = paste("Top", displayx, level, "ungrouped")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(barchartxu)
+  } else {
+    physeqm <- merge_samples(physeq, var1)
+    sample_data(physeqm)[[var1]] <- levels(sample_data(physeqm)[[var1]])
+    physeqg <- tax_glom(physeqm, level)
+    physeqg <- transform_sample_counts(physeqg, function(x) 100 * x/sum(x))
+    physeqg <- prune_taxa(names(sort(taxa_sums(physeqg), TRUE))[1:displayx], physeqg)
+    grouped_bar <- plot_bar(physeqg, fill = level) +
+      labs(x = "Study population",
+           y = "% of total AMR composition",
+           title = paste("Top", displayx, level, sep = " ")) +
+      scale_fill_brewer(palette = "Spectral")
+    return(grouped_bar)
+  }
+}
+
+# AMR class 
+AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class")+
+  scale_fill_manual(values = fill_colours) +  # Use the extracted colors
+  labs(fill = "AMR class", title = NULL) +
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),  
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right")
+
+AMRclass_aggl_noblanks.groupedcopdcaco
+
+# ARG cluster level 
+# Prune ps object to contain only the top 10 ARG clusters
+ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(Final.ps.top10ARGClusters), decreasing = TRUE))[1:10], Final.ps.top10ARGClusters)
+
+fill_colours10 <- c("#cc3311", "#4a86e8", "#ff9900", "#669966", "#33bbee", "#c77cff", "#bb5566", "#003399", "#ff33cc", "#ffcc00")
+
+ARGcluster.top10@sam_data$copdcaco <- revalue(ARGcluster.top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
+
+theme_set(theme_cowplot())
+ARG_top10_relative_bar <- bar.graphs.relative(ARGcluster.top10, "copdcaco", level = "ARGCluster")+
+  scale_fill_manual(values = fill_colours10) +  # Use the extracted colors
+  labs(fill = "ARG Cluster", title = NULL, y = "% of top 10 ARG clusters present")+
+  theme(axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),  
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.position = "right")
+
+# Patchwork to join the plots together
+patched_barcharts <- (AMRclass_aggl_noblanks.groupedcopdcaco|ARG_top10_relative_bar)
+patched_bar_labelled <- patched_barcharts + plot_annotation(tag_levels = 'a')
+
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patched_bar_labelled.svg", width = 14, height = 6, plot = patched_bar_labelled)
+```
+
+
+```
+
 
