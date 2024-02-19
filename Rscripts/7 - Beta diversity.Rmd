@@ -79,12 +79,12 @@ ARGcluster.aggl.noblanks@sam_data$copdcaco <- revalue(ARGcluster.aggl.noblanks@s
 
 ARGcluster.aggl.PCoA.noblanks.ordination <- ordinate(ARGcluster.aggl.noblanks, method="PCoA", distance="bray")
 
+theme_set(theme_cowplot())
 ARGcluster.aggl.PCoA.plot.noblanks <- plot_ordination(ARGcluster.aggl.noblanks, ARGcluster.aggl.PCoA.noblanks.ordination, color = "copdcaco", shape = "copdcaco") +
   ggtitle("Bray-Curtis PCoA - COPD vs control") +
   labs(legend = "COPD/control status") +
   geom_point(aes(color = copdcaco), size = 4) +
   scale_color_manual(values = c("cornflowerblue", "orange")) +
-  geom_text(aes(label = row.names(ARGcluster.aggl.noblanks@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +
   theme(
     plot.title = element_text(size = 12),
     axis.text = element_text(size = 15),
@@ -96,10 +96,12 @@ ARGcluster.aggl.PCoA.plot.noblanks <- plot_ordination(ARGcluster.aggl.noblanks, 
   scale_fill_manual(values = c("cornflowerblue", "orange")) +
   scale_color_manual(values = c("cornflowerblue", "orange")) +
   geom_text(x = 0.42, y = -0.47, label = paste("PERMANOVA, p-value =", Permanova_pval_COPDcontrol), size = 4, color = "black", family = "Arial") +
-  xlab("PCoA1") +
-  ylab("PCoA2") +
+  xlab("PCo1 (28.5%) ") +
+  ylab("PCo2 (17.2%)") +
   coord_fixed(ratio = 1) +
-  guides(color = guide_legend(title = "Study population"))
+  guides(color = guide_legend(title = "Study population"),
+         shape = guide_legend(title = "Study population"),
+         fill = guide_legend(title = "Study population"))
 
 ggsave("Output_files//PCoAs//ARGcluster.aggl.PCoA.plot.noblanks.png", ARGcluster.aggl.PCoA.plot.noblanks, width = 8, height = 6, dpi = 3000)
 ```

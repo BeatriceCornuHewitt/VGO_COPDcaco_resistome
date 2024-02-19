@@ -53,13 +53,20 @@ otu_table(microbiome.ps.genus.hell) <-otu_table(decostand(otu_table(microbiome.p
 ```{r}
 # PCoA ordinations
 ## Microbiome 
-microbiome.PCoA <- ordinate( microbiome.ps.genus.hell, method="PCoA", distance="bray")
-microbiome.PCoA.plot <- plot_ordination( microbiome.ps.genus.hell, microbiome.PCoA, color="copdcaco", shape="copdcaco" ) +
-    ggtitle("MICROBIOME: PCoA on Bray-Curtis distances, hellinger transformed data") +
-    geom_point(size = 3) +
-    geom_text( aes( label=row.names(microbiome.ps.genus.hell@sam_data),hjust=-0.3, vjust=-0.5 ) )+
+set.seed(123)
+microbiome.PCoA <- ordinate( microbiome.ps.genus.hell, 
+                             method="PCoA", 
+                             distance="bray")
+
+microbiome.PCoA.plot <- plot_ordination(microbiome.ps.genus.hell, microbiome.PCoA,
+                                        color="copdcaco", 
+                                        shape="copdcaco" ) +
+  ggtitle("MICROBIOME: PCoA on Bray-Curtis distances, hellinger transformed data") +
+  geom_point(size = 3) +
+  geom_text( aes( label=row.names(microbiome.ps.genus.hell@sam_data),hjust=-0.3, vjust=-0.5)) +
   stat_ellipse()
 microbiome.PCoA.plot
+
 # Extract the data from the PCoA plot for use in the procrustes analysis
 microbiome.procrustes.PCoA.data <- microbiome.PCoA.plot$data[, 1:2]
 # Remove 'T1' from sample ID name so that it matches the resistome data
@@ -78,65 +85,22 @@ resistome.PCoA.plot
 # Extract the data from the PCoA plot for use in the procrustes analysis
 resistome.procrustes.PCoA.data <- resistome.PCoA.plot$data[, 1:2]
 
-
 # Procrustes
-procrustes.PCoA.symm <- procrustes(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data, 
+procrustes.PCoA.symm <- procrustes(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data,
                                           symmetric = TRUE, 
                                           permutations = 9999)
 
-summary(procrustes.PCoA.symm)
-print(procrustes.PCoA.symm)
+# Significance testing using 'protest' (permutational test)
+set.seed(123)
+protest(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.4643 , p= 1e-04, m-squared = 0.7844
 
-# Plot procrustes
-# Kind 1 gives a visual indication of the degree of match between the two ordinations. Symbols or labels show the position of the samples in the first ordination, and arrows point to their positions in the target ordination. The plot also shows the rotation between the two ordinations necessary to make them match as closely as possible.
-plot(procrustes.PCoA.symm,
-     kind = 1,
-     main = "Procrustes plot - PCoA microbiome/resistome",
-     xlab = "PCoA 1",
-     ylab = "PCoA 2")
-
-# Kind 2 plots show the residuals for each sample. This allows identification of samples with the worst fit. The horizontal lines, from bottom to top, are the 25% (dashed), 50% (solid), and 75% (dashed) quantiles of the residuals.
+# Plot procrustes errors
 plot(procrustes.PCoA.symm, 
-     kind =2, 
+     kind = 2, 
      main= "Procrustes errors - PCoA microbiome/resistome")
 
-# Significance testing using 'protest' - this is a permutational test of the significance of the procrustes result based on the correlation from a symmetric procrustes analysis 
-protest(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.3477, p= 0.0006
-
-
-# Randomised procrustes
-# Randomising the procrustes so that the microbiome and resistome samples are now no longer linked - good to compare the correlation with that seen in the linked procrustes analysis 
-# Only need to 'randomise' one of the procrustes' input datasets (here I do microbiome)
-microbiome.PCoA.random <- microbiome.procrustes.PCoA.data
-row.names(microbiome.PCoA.random)
-row.names(microbiome.PCoA.random) <- sample(row.names(microbiome.PCoA.random))
-microbiome.PCoA.random <- microbiome.PCoA.random[match(row.names(resistome.procrustes.PCoA.data), row.names(microbiome.PCoA.random)), ]
-
-procrustes.PCoA.randomised <- procrustes(microbiome.PCoA.random, resistome.procrustes.PCoA.data, symmetric = TRUE, permutations= 9999)
-
-# Results of random procrustes
-summary(procrustes.PCoA.randomised)
-print(procrustes.PCoA.randomised)
-
-# Plot procrustes
-# Kind 1 gives a visual indication of the degree of match between the two ordinations. Symbols or labels show the position of the samples in the first ordination, and arrows point to their positions in the target ordination. The plot also shows the rotation between the two ordinations necessary to make them match as closely as possible.
-plot(procrustes.PCoA.randomised,
-     kind = 1,
-     main = "Procrustes plot randomised - PCoA microbiome/resistome",
-     xlab = "PCoA 1",
-     ylab = "PCoA 2")
-
-# Kind 2 plots show the residuals for each sample. This allows identification of samples with the worst fit. The horizontal lines, from bottom to top, are the 25% (dashed), 50% (solid), and 75% (dashed) quantiles of the residuals.
-plot(procrustes.PCoA.randomised, kind = 2)
-# Significance testing using 'protest' - this is a permutational test of the significance of the procrustes result based on the correlation from a symmetric procrustes analysis 
-protest(microbiome.PCoA.random, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.1655 , p=0.2805  (non-significant)- as expected, when we compare the resistome and microbiome of random samples within this data, we do not see a correlation between resistome and microbiome (p>0.05 )
-
-
-# ggplot for procrustes plots 
 # PCoA procrustes
-suppressWarnings(library(cowplot))
 theme_set(theme_cowplot())
-
 PCoA.pro.df <- data.frame(rda1=procrustes.PCoA.symm$Yrot[,1], rda2=procrustes.PCoA.symm$Yrot[,2], xrda1 = procrustes.PCoA.symm$X[,1], xrda2 = procrustes.PCoA.symm$X[,2])
 PCoA.pro.df$copdcontrol <- microbiome.ps.genus.hell@sam_data$copdcaco
 PCoA.pro.df$copdcontrol <- factor(PCoA.pro.df$copdcontrol, levels = c(0, 1), labels = c("Control", "COPD"))
@@ -150,9 +114,28 @@ PCoA.pro.plot +
   scale_colour_manual(values = c("cornflowerblue", "coral1")) +  # Define the color mapping
   scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +  # Define the shape mapping
   scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "coral1")) +  # Define the fill mapping
-  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.35, Significance: 6e-04") +
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.464, Significance: 1e-04") +
   guides(fill = guide_legend(override.aes = list(shape = NA)))  # Remove the contents of the legend
 
+
+
+
+# Randomised procrustes
+microbiome.PCoA.random <- microbiome.procrustes.PCoA.data
+row.names(microbiome.PCoA.random)
+row.names(microbiome.PCoA.random) <- sample(row.names(microbiome.PCoA.random))
+microbiome.PCoA.random <- microbiome.PCoA.random[match(row.names(resistome.procrustes.PCoA.data), row.names(microbiome.PCoA.random)), ]
+
+procrustes.PCoA.randomised <- procrustes(microbiome.PCoA.random, resistome.procrustes.PCoA.data, symmetric = TRUE, permutations= 9999)
+
+# Significance testing using 'protest' 
+set.seed(123)
+protest(microbiome.PCoA.random, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.08359, p= 0.8483 ,m-squared = 0.993 
+
+# Plot procrustes errors
+plot(procrustes.PCoA.randomised, 
+     kind = 2, 
+     main= "Procrustes errors - PCoA microbiome/resistome randomised")
 
 # Random PCoA procrustes
 PCoA.pro.r.df <- data.frame(rda1=pro.PCoA.r$Yrot[,1], rda2=pro.PCoA.r$Yrot[,2], xrda1 = pro.PCoA.r$X[,1], xrda2 = pro.PCoA.r$X[,2])
@@ -169,8 +152,6 @@ PCoA.pro.plot.r +
   scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "coral1")) +  # Define the fill mapping
   labs(title = "PCoA procrustes - randomised microbiome", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.17, Significance: 0.28") +
   guides(fill = guide_legend(override.aes = list(shape = NA))) + # Remove the contents of the legend
-
-
 ```
 # Figure for manuscript 
 ```{r}
@@ -195,6 +176,24 @@ Final.PCoa.pro <- PCoA.pro.plot +
                  plot.subtitle = element_text(size=16))  # Adjust the size of x- and y-axis labels
 
 ggsave(filename = "Output_files//Procrustes//Final.PCoa.pro.png", plot = Final.PCoa.pro, width = 8, height = 6, dpi = 1000)
+
+
+
+Final.PCoa.pro2 <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", size = 16 ) +
+  guides(fill = guide_legend(override.aes = list(shape = NA)))+
+  theme(
+    axis.text.x = element_text(size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    plot.subtitle = element_text(size=16, hjust = 1, vjust = 0),
+    plot.margin = margin(0, 0, 1, 1, "cm")  # Add a margin to make space for the subtitle
+ # Adjust the position of the subtitle
+  )
 
 ```
 
