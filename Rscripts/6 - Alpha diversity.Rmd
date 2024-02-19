@@ -84,47 +84,49 @@ shapiro.test(sample_data(Final.ps.multiplybillion.noblanks)$Observed)
 metadata.final.ps.billion.noblanks <- sam_data(Final.ps.multiplybillion.noblanks)
 metadata.final.ps.billion.noblanks$copdcaco <- revalue(metadata.final.ps.billion.noblanks$copdcaco, c("control"="Control"))
 
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
 # Create boxplots for COPD & controls 
 Shannon.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = shannon)) + 
-  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.8, outlier.shape = NA, fatten = 2) + 
   theme(
-    axis.title = element_text(size = 20),
-    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 12),
     legend.position = "none"  # This line attempts to remove the legend
   ) +
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("Study population") +
-  ylab("Shannon diversity index") +
-  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  ylab("Shannon index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 3, alpha = 0.3) +
   scale_fill_manual(values = c("cornflowerblue", "orange")) +
   scale_color_manual(values = c("cornflowerblue", "orange"))
 
 
 Simpson.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = SimpsonEvenness)) + 
-  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.8, outlier.shape = NA, fatten = 2) + 
   theme(
-    axis.title = element_text(size = 20),
-    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 12),
     legend.position = "none"  # This line attempts to remove the legend
   ) +
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("Study population") +
-  ylab("Simpson Evenness diversity \nindex") +
-  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  ylab("Simpson Evenness index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 3, alpha = 0.3) +
   scale_fill_manual(values = c("cornflowerblue", "orange")) +
   scale_color_manual(values = c("cornflowerblue", "orange"))
 
 Observed.diversity.plot <- ggplot(metadata.final.ps.billion.noblanks, aes(x = copdcaco, y = Observed)) + 
-  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.5, outlier.shape = NA, fatten = 4) + 
+  geom_boxplot(aes(fill = factor(copdcaco)), alpha = 0.8, outlier.shape = NA, fatten = 2) + 
   theme(
-    axis.title = element_text(size = 20),
-    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 12),
     legend.position = "none"  # This line attempts to remove the legend
   ) +
   theme(plot.title = element_text(hjust = 0.5)) +
   xlab("Study population") +
-  ylab("Observed diversity index") +
-  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 4, alpha = 0.3) +
+  ylab("Observed index") +
+  geom_point(aes(color = factor(copdcaco)), position = "jitter", size = 3, alpha = 0.3) +
   scale_fill_manual(values = c("cornflowerblue", "orange")) +
   scale_color_manual(values = c("cornflowerblue", "orange"))
 
@@ -132,6 +134,8 @@ Shannon.diversity.plot
 Simpson.diversity.plot
 Observed.diversity.plot
 ```
+
+
 ## Calculate alpha diversity difference
 ```{r}
 # Compare alpha diversity of COPD and control with a t-test or Mann-Whitney U test 
