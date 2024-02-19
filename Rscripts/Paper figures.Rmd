@@ -1,0 +1,74 @@
+---
+title: "Paper figure"
+output: html_notebook
+---
+# Figure for paper
+```{r}
+# Try with patchwork to combine all plots
+theme_set(theme_cowplot())
+# Alpha diversity
+Shannon.diversity.plot
+Simpson.diversity.plot
+Observed.diversity.plot
+
+# Beta diversity
+PCoA <- plot_ordination(ARGcluster.aggl.noblanks, ARGcluster.aggl.PCoA.noblanks.ordination) +
+  geom_point(aes(color = copdcaco), shape = 16, size = 3) +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10)
+  ) +
+  stat_ellipse(geom = "polygon", alpha = 1/4, aes(fill = copdcaco, color = copdcaco)) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(x = 0.35, y = -0.47, label = paste("p value =", Permanova_pval_COPDcontrol), size = 4, inherit.aes = FALSE) +
+  xlab("PCo1 (28.5%)") +
+  ylab("PCo2 (17.2%)") +
+  coord_fixed(ratio = 1) +
+  guides(color = guide_legend(title = "Study population"),
+         fill = guide_legend(title = "Study population"), 
+         size = guide_legend(title = "Study population"))
+PCoA
+
+ggsave(filename = "../Output_files/PCoAs/PCoA_copdcaco.png", plot = PCoA, width = 8, height = 6, dpi = 1000)
+
+
+# Procrustes
+PCoA.pro.plot <- ggplot(PCoA.pro.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol, shape="Microbiome", fill=copdcontrol), size = 3) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol, shape="Resistome", fill=copdcontrol), size = 3) +
+  geom_segment(aes(x=rda1, y=rda2, xend=xrda1, yend=xrda2, colour=copdcontrol), arrow=arrow(length=unit(0.2, "cm")))
+Final.PCoa.pro2 <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +  # Define the color mapping
+  scale_shape_manual(values = c("Microbiome" = 24, "Resistome" = 21)) +  # Define the shape mapping
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +  # Define the fill mapping
+    geom_text(x = 0.25, y = -0.14, label = "Correlation = 0.464\n p value = 1e-04", size=4) +
+  labs(y = "PCo2", x = "PCo1", size = 12) +
+  guides(color = guide_legend(title = "Study population", override.aes = list(shape = NA)),
+         shape = guide_legend(title = "Microbiome/Resistome"),
+         fill = guide_legend(title = "Study population"))+ 
+           theme(axis.text = element_text(size = 12), 
+                 axis.title = element_text(size = 12), 
+                 legend.text = element_text(size = 10),
+                 legend.title = element_text(size = 10)
+                 )
+Final.PCoa.pro2
+
+ggsave(filename = "../Output_files/Procrustes/Final.PCoa.pro2.png", plot = Final.PCoa.pro2, width = 8, height = 6, dpi = 1000)
+
+
+# Patchwork to join the plots together
+patched <- (Shannon.diversity.plot|Simpson.diversity.plot|Observed.diversity.plot)/
+                                  (PCoA|Final.PCoa.pro2) 
+patched_labelled <- patched + plot_annotation(tag_levels = 'a')
+
+ggsave(filename = "../Output_files/patched_labelled.png", width = 12, height = 6, plot = patched_labelled, dpi = 1000)
+
+ggsave(filename = "../Output_files/patched_labelled.pdf", width = 12, height = 6, plot = patched_labelled)
+
+patch1 <- (Shannon.diversity.plot|Simpson.diversity.plot|Observed.diversity.plot)/
+                                  (PCoA|Final.PCoa.pro2) + plot_layout(guides = "collect")
+
+```
