@@ -9,15 +9,15 @@ seed <- 2202
 set.seed(seed)
 
 # input for ps object 
-here()
-metafile <- here("Data//Raw//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab")
-argclusterfile <- here("Data//Raw//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab")
-argmappingfile <- here("Data//Raw//02e_TotalResfinderMapped_v3.tab")
+here::here()
+metafile <- here::here("Data//Raw//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab")
+argclusterfile <- here::here("Data//Raw//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab")
+argmappingfile <- here::here("Data//Raw//02e_TotalResfinderMapped_v3.tab")
 ```
 # Read in the raw data
 ```{r}
 # Data were pre-processed from individual excel sheets (metadata and 'otu data') and the refined ARG clustering spreadsheet (ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b)
-metadata <- read.csv(metafile, header=TRUE, sep="\t", row.names=1 )
+metadata <- read.csv(metafile, header=TRUE, sep="\t", row.names=1)
 ARGclusters <- read.csv(argclusterfile, header=TRUE, sep="\t", row.names=1 )
 ARG.long <- read.csv(argmappingfile, header=TRUE, sep="\t")
 
@@ -26,12 +26,63 @@ ARGcount <- ARG.long %>%
     select(SampleName, ARGname, MappedCount) %>% 
     pivot_wider(names_from=ARGname, values_from=MappedCount, values_fill=0)
 ```
+# Additional metadata - Livestock exposure
+```{r}
+# Read in the exposure data from MdR - exposure proxies
+livestock_exp1 <- read.csv("..//Data//Raw//VGOcopdcaco_resistome_Livestpred_all_forBea.csv", header=TRUE, row.names='respnr')
+# Remove the column 'X' from the dataframe 
+livestock_exp1 <- subset(livestock_exp1, select = -X)
+
+# Read in other livestock exposure metadata from Myrna including dispersion modelled endotoxin and PM10 
+livestock_exp2 <- read.csv("..//Data//Raw//VGOcopdcaco_resistome_Livestpred_forBea_copdstatus.csv", header=TRUE, row.names='respnr')
+# Remove the column 'X' from the dataframe 
+livestock_exp2 <- subset(livestock_exp2, select = -X)
+livestock_exp2 <- subset(livestock_exp2, select = -copdcaco)
+
+# Combine the two data frames by merging on the row names
+livestock_exp <- merge(livestock_exp1, livestock_exp2, by = "row.names", all.x = TRUE, suffixes = c("", ""))
+# Change column name 
+names(livestock_exp)[names(livestock_exp) == "Row.names"] <- "ID"
+# Remove duplicate columns if any
+livestock_exp <- livestock_exp[, !duplicated(colnames(livestock_exp))]
+livestock_exp_df <- livestock_exp
+
+# Remove blanks from the dataframe
+livestock_exp_df <- livestock_exp_df[!(livestock_exp_df$ID) %in% blanks, ]
+
+# Read in the exposure modelled concentrations
+# Import the LUR and RF estimates of E.coli, staph, tetW and mecA concentrations for each of the 69 participants
+# SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
+livestock_models <- read.xlsx("..//Data//Raw//LUR_RF_residential_predictions_copdstatus.xlsx")
+livestock_models <- data.frame(livestock_models, row.names = livestock_models$X1)
+livestock_models$X1 <- NULL
+
+# Add to current metadata 
+metadata
+metadata$ID <- rownames(metadata) # Also includes blanks
+# Data frame containing LUR and RF-modelled microbial concentration predictions
+livestock_models
+colnames(livestock_models)[colnames(livestock_models) == "pt_ID"] <- "ID"
+
+# Join the dataframes together 
+all_metadata <- merge(metadata, livestock_exp_df, by = "ID", all.x = TRUE, suffixes = c("", ""))
+all_metadata <- merge(all_metadata, livestock_models, by = "ID", all.x = TRUE, suffixes = c("", ""))
+# Exclude duplicate columns (copdcaco column)
+all_metadata <- all_metadata[!duplicated(colnames(all_metadata))]
+# Remove ID column and make ID numbers the rownames for later ps merge
+rownames(all_metadata) <- all_metadata$ID
+all_metadata$ID <- NULL
+
+
+# only take new swabs - not lung function testing 
+```
 
 # Create PS objects 
 
 - 1: Relative 'rarefy': ARG read count data was first rarefied according to the relative correction factors per sample (phyloseq= merged.rar3)
 - 2: Gene length correction: Rarefied ARG read count data was then corrected for ARG lengths (now FPK) ((read counts*1000)/ARG length)  (phyloseq= merged.rar3.fpk)
 - 3: Bacterial content correction: FPK values were normalised to total bacteria (using qPCR 16-S values for each sample)
+- 4: Agglomerate to the 90% gene identity level
   
 Since rarefaction of data before or after ARG length correction could make a limited/small (tested with artificial set), we decided to rarefy before ARG length correction.
 
@@ -40,91 +91,28 @@ Since rarefaction of data before or after ARG length correction could make a lim
 ARGotutable <- ARGcount %>% column_to_rownames("SampleName")
 
 # Create ps with otu table and tax table
-merged <- phyloseq(otu_table(ARGotutable, taxa_are_rows=FALSE ), tax_table( as.matrix(ARGclusters)))
+merged <- phyloseq(otu_table(ARGotutable, taxa_are_rows=FALSE),
+                   tax_table(as.matrix(ARGclusters)))
+
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 369 taxa and 73 samples ]
+# tax_table()   Taxonomy Table:    [ 369 taxa by 11 taxonomic ranks ]
 
 # somehow the apostrophes get converted from df to matrix. Therefore we import again directly the matrix into the ps object to preserve names.
 merged@otu_table@.Data <- as.matrix(ARGotutable)
 
-# Add the meta data by aligning and merging it
-metadata <- metadata[match(sample_names(merged), rownames(metadata)), ]
+# Align and add metadata to the ps object
+all_metadata <- all_metadata[match(sample_names(merged), rownames(all_metadata)), ]
+merged@sam_data <- sample_data(all_metadata)
 
-# final PS object
-merged@sam_data <- sample_data(metadata)
-
-# Still some of the apostrophes are missing from the tax_table - copy over the correct names to the tax_table rows
+# Some of the apostrophes are missing from the tax_table rownames
+# Copy over the correct names from the otu table
 rownames(merged@tax_table) <- colnames(merged@otu_table)
-
-# make numeric value to factor variable
+# Make enrichment pool number to a factor variable
 merged@sam_data$Enrich_pool_num <- as.factor(merged@sam_data$Enrich_pool_num)
 
 # Save ps object 
-saveRDS(merged, "Output_files//Phyloseq_objects//1_COPD_resistome_phyloseq_object.RDS")
-
-# Save otu table
-otu <- as.data.frame(otu_table(merged)) %>% rownames_to_column( "SampleID" )
-write.csv(otu, paste0(psfile, ".tab" ), row.names=FALSE )
-
-# Basic metrics of PS object
-summary(sample_data(merged))
-```
-# Phyloseq for Zenodo
-```{r}
-# Check if the row names match between 'merged' and 'ARGlen'
-row_names_match <- all(rownames(merged@tax_table) == rownames(ARGlen))
-
-if (row_names_match) {
-  cat("Row names match between 'merged' and 'ARGlen'.\n")
-} else {
-  cat("Row names do not match between 'merged' and 'ARGlen'.\n")
-}
-
-# Create a new tax_table with the additional 'ARGlen' column
-new_tax_table_df <- data.frame(merged@tax_table, ARGlen = ARGlen$ARGlen)
-colnames <- colnames(new_tax_table_df)
-
-new_tax_table <- tax_table(new_tax_table_df)
-colnames(tax_table(new_tax_table)) <- colnames
-taxa_names(new_tax_table) <- rownames(new_tax_table_df)
-
-zenodo_ps <- merged
-zenodo_ps@tax_table <- new_tax_table
-zenodo_ps@tax_table
-
-# Now keep only information we want for the zenodo ps object
-# Taxonomy table
-# Create a copy of the tax_table
-new_tax_table_zenodo <- tax_table(zenodo_ps)
-colnames(tax_table(zenodo_ps))
-# Define 'tax_table_columns_to_keep' as a vector of the column names you want to keep
-tax_table_columns_to_keep <- c("ARG_class", "ARGCluster", "ARGlen")
-# Subset the tax_table to keep only the specified columns
-new_tax_table_zenodo <- new_tax_table_zenodo[, tax_table_columns_to_keep]
-# Replace the tax_table in your phyloseq object with the modified one
-zenodo_ps@tax_table <- new_tax_table_zenodo
-
-# Sample data 
-new_sam_data_zenodo <- zenodo_ps@sam_data
-colnames(zenodo_ps@sam_data)
-sam_data_columns_to_keep <- c("copdcaco", "qPCR_16S_ngml", "Enrich_pool_num", "RelativeCorrect_readpair_counts")
-new_sam_data_zenodo <- new_sam_data_zenodo[, sam_data_columns_to_keep]
-zenodo_ps@sam_data <- new_sam_data_zenodo
-
-# Otu table - keep as normal (no corrections)
-zenodo_ps@otu_table
-
-# Remove duplicate sample (13674) from the dataset
-zenodo_ps <- prune_samples(sample_names(zenodo_ps) != "13674", zenodo_ps) 
-zenodo_ps # Final PS object therefore now has 72 samples
-
-resistome_samdata<- zenodo_ps@sam_data
-resistome_samdata$ParticipantID <- rownames(resistome_samdata)
-write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
-
-
-zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
-zenodo_ps@sam_data$copdcaco
-zenodo_ps
-saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
+saveRDS(merged, "..//Output_files//Phyloseq_objects//1_COPD_resistome_phyloseq_object.RDS")
 ```
 # Normalise PS for relative volume inputs  
 ```{r}
@@ -133,6 +121,7 @@ saveRDS(zenodo_ps,"Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.r
 # - Subsequently we need to correct for ARG gene length. (N.B. We tested in a small artificial example that rarefication before or after ARG length correction could make a limited/small difference (tested with artificial set...see R playground using 10 samples), we decided to do it 100% correct and rarefy before ARG length correction.
 # - Normalise to bacterial content (16S qPCR data) of each sample.
 # Based on the correction factors calculated from the wet-lab data we determined a correction factor by which each sample should be normalised to individually. We therefore calculated what the target read depth should be per sample based on inputs. Use that per-sample value to rarefy each sample individually.  
+# i.e. The rarefaction depth is determined based on the relative corrected read pair counts provided in the metadata.
 # how many samples are there in the phyloseq object?
 nsamples <- length(sample_names(merged))
 
@@ -151,120 +140,129 @@ for( i in 2:nsamples) {
   m.tmp <- rarefy_even_depth( m.tmp, sample.size=metasum[i], trimOTUs=FALSE, rngseed=seed )
   mtotal <- merge_phyloseq( mtotal, m.tmp )
 }
-
+# set.seed(2202) was used to initialize repeatable random subsampling.
 merged.rar <- mtotal
-
-# Inspect rarefied data
 merged.rar
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 369 taxa and 73 samples ]
+# sample_data() Sample Data:       [ 73 samples by 20 sample variables ]
+# tax_table()   Taxonomy Table:    [ 369 taxa by 11 taxonomic ranks ]
+
 # Compare to non-rarefied data
 rarefy_compare <- data.frame( "OriginalSum"=sample_sums(merged), "RarefiedSum"=sample_sums(merged.rar) )
 rarefy_compare
+merged; merged.rar
 
-## Restore taxa_names
-# At some point all apostrophes got removed from the taxa names. We need to restore them, and do this here
-taxnames_compare <- data.frame("org"=taxa_names(merged),"altered.rar"=taxa_names(merged.rar))
-taxnames_compare
-
+# All apostrophes got removed from the taxa names, restore these in the new ps 
+print(data.frame("original"=taxa_names(merged),"rarefied"=taxa_names(merged.rar)))
+# Restore taxa_names
 taxa_names(merged.rar) <- taxa_names(merged)
-taxnames_compare2 <- data.frame("org"=taxa_names(merged),"altered.rar"=taxa_names(merged.rar))
-taxnames_compare2
+print(data.frame("original"=taxa_names(merged),"rarefied"=taxa_names(merged.rar)))# names restored
 
-## Cleanup zero taxa and samples
-# N.B. using the subset_taxa or subset_samples functions removes the apostrophes again from the ps objecect but prune_taxa does not.
-# Filter out taxa (microbial features) in the merged.rar phyloseq object that have zero total counts across all samples. 
+# Filter out ARGs in the merged.rar phyloseq object with zero total counts 
 merged.rar2 <- prune_taxa(taxa_sums(merged.rar) > 0, merged.rar) 
 merged.rar2
-# Filter out samples from the merged.rar2 phyloseq object that have zero total counts. The resulting merged.rar3 object contains only samples with non-zero counts for at least one taxa.
+# Filter out samples from the merged.rar2 phyloseq object that have zero total counts
 merged.rar3 <- prune_samples(sample_sums(merged.rar2) > 0, merged.rar2)
 merged.rar3
-
-# check if taxa names still contain apostrophes
-head(taxa_names(merged.rar3)) # yes names are correct
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 73 samples ]
+# sample_data() Sample Data:       [ 73 samples by 20 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
 
 # save this ps for later use for DA analysis
-saveRDS(merged.rar3, file = "Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS")
+saveRDS(merged.rar3, file="..//Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS")
 ```
 # Correct PS for ARG gene length
 ```{r}
 # unique list of ARG and ARG length (n=369)
 ARGlen <- data.frame("ARGname"=ARG.long$ARGname, "ARGlen"=ARG.long$ARGlength)
-ARGlen <- unique.data.frame(ARGlen)
+ARGlen <- unique.data.frame(ARGlen) # Remove duplicate rows to keep only unique ARGs
 rownames(ARGlen) <- NULL 
 ARGlen <- ARGlen %>% column_to_rownames("ARGname")
 ARGlen
 
-ARGlen$ARGname <- rownames(ARGlen)
-write.xlsx(ARGlen, "Output_files//Phyloseq_objects//ARGlengths.xlsx")
+# ARGlen$ARGname <- rownames(ARGlen)
+write.xlsx(ARGlen, "..//Output_files//Phyloseq_objects//ARGlengths.xlsx")
 
-## ARG count to FPK
+# ARG count to FPK
 merged.rar3.fpk <- merged.rar3
-# convert otu counts directly by matrix manipulation in the ps object using ARGlen df.
-merged.rar3.fpk@otu_table@.Data <- merged.rar3.fpk@otu_table@.Data * 1000 / ARGlen[ col(merged.rar3.fpk@otu_table@.Data), ] 
+# Convert otu counts directly by matrix manipulation in the ps object using ARGlen df.
+# arg_length_vector <- setNames(ARGlen$ARGlen, ARGlen$ARGname)
+# # Use the named vector for indexing
+# merged.rar3.fpk@otu_table@.Data <- merged.rar3.fpk@otu_table@.Data * 1000 / arg_length_vector[colnames(merged.rar3.fpk@otu_table@.Data)]
 
-# Check the ps
-merged.rar3.fpk
+merged.rar3.fpk@otu_table@.Data <- merged.rar3.fpk@otu_table@.Data * 1000 / ARGlen[ col(merged.rar3.fpk@otu_table@.Data), ] 
+head(merged.rar3.fpk@otu_table@.Data) # Check conversion is correct 
+
+# Check the ps to make sure that the correction was done correctly
 head(taxa_names(merged.rar3.fpk))
 head(data.frame(otu_table(merged.rar3.fpk)))
+head(data.frame(otu_table(merged.rar3)))
+head(ARGlen) # Yes the correction is correct - scaled by a factor of 1000, then divided by their corresponding ARG length
 
 # Save partially normalised data 
-saveRDS(merged.rar3.fpk, "Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS")
-
-# Save otu table
-otu <- as.data.frame(otu_table(merged.rar3.fpk)) %>% rownames_to_column("SampleID")
-write.csv(otu, paste0(psfpkfile, ".tab"), row.names=FALSE)
+saveRDS(merged.rar3.fpk, "..//Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.rds")
 
 # Basic metrics of normalised/ARG length-corrected PS 
 summary(sample_data(merged.rar3.fpk))
-merged@tax_table
 ```
 # Correct PS for 16S qPCR counts
 ```{r}
 # create a list of sample ID and associated 16S qPCR count
 qPCRcounts <- data.frame("SampleID"= unique(ARG.long$SampleName), "qPCR16S"= metadata$qPCR_16S_ngml)
 rownames(qPCRcounts) <- NULL
-qPCRcounts
 qPCRcounts <- qPCRcounts %>% column_to_rownames("SampleID")
 qPCRcounts
 
-saveRDS(qPCRcounts,"Output_files//Phyloseq_objects//qPCRcounts")
+saveRDS(qPCRcounts,"..//Output_files//Phyloseq_objects//qPCRcounts")
 
 merged.rar3.fpkm <- merged.rar3.fpk
-# convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
-merged.rar3.fpkm@otu_table@.Data <- merged.rar3.fpkm@otu_table@.Data / qPCRcounts [ 1:73 ,]
 
-# check PS 
-merged.rar3.fpkm
+# convert otu fpk values directly by matrix manipulation 
+merged.rar3.fpkm@otu_table@.Data <- merged.rar3.fpkm@otu_table@.Data / qPCRcounts [ 1:73 ,]
 head(taxa_names(merged.rar3.fpkm))
 
 # Manual checking of data
-view(merged.rar3.fpkm@otu_table@.Data)
-view(merged.rar3.fpk@otu_table@.Data)
-view(merged.rar3@otu_table@.Data) 
-# Manual checks of the otu table data shows me that this correction has been successful as we can see that each value has been divided by the individual ARG lengths
+head(merged.rar3.fpkm@otu_table@.Data)
+head(merged.rar3.fpk@otu_table@.Data)
+head(merged.rar3@otu_table@.Data)
+head(qPCRcounts)
+# Manual checks of the otu table shows that this correction has been successful
 
-
-## Remove duplicate sample (13674) from the dataset
+# Remove duplicate sample (13674) from the dataset
 # There was an error in the choice and labelling of 1 control sample and we ended up with the same control sample being used for 2 case samples. It was mislabelled as '13674' hence was thought to be a different sample to '13764' which was already included in the dataset. Therefore we must remoce '13674' from the dataset. 
-Final.ps <- prune_samples(sample_names(merged.rar3.fpkm) != "13674", merged.rar3.fpkm) 
-Final.ps
-# Final PS object therefore now has 72 samples in total (35 cases, 34 controls, 3 blanks)
+ps <- prune_samples(sample_names(merged.rar3.fpkm) != "13674", merged.rar3.fpkm) 
+ps
+# This ps object therefore now has 72 samples in total (35 cases, 34 controls, 3 blanks)
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 72 samples ]
+# sample_data() Sample Data:       [ 72 samples by 20 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
 
 # Save fully normalised & corrected data
-saveRDS(Final.ps, "Output_files//Phyloseq_objects//4_COPD_resistome_phyloseq_object_rarefied_FPKM.RDS")
+saveRDS(ps, "..//Output_files//Phyloseq_objects//4_COPD_resistome_phyloseq_object_rarefied_FPKM.RDS")
 
-# Save otu table
-otu_fpkm <- as.data.frame(otu_table(Final.ps)) %>% rownames_to_column("SampleID")
-write.csv(otu_fpkm, paste0(psfpkmfile, ".tab" ), row.names=FALSE)
+# Remove blanks from ps  
+ps_noblanks <- ps
+blanks <- c("veldbl16", "veldbl3", "veldbl5")
+ps_noblanks <- prune_samples(!sample_names(ps_noblanks)%in%blanks, ps_noblanks)
+ps; ps_noblanks # now 69 true samples, 3 blanks removed
+
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 72 samples ]
+# sample_data() Sample Data:       [ 72 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 69 samples ]
+# sample_data() Sample Data:       [ 69 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
 ```
 # Agglomerate at 90% ARG cluster level 
 ```{r}
-# Now agglomerate the data to AMRcluster level - i.e. merge ARGs which are in the same ARGcluster (90% identity level)  
-# Clustering of ARGs at the 90% identity level is classified as 'ARGCluster' in the tax data of the Final.ps object - agglomerate at this level i.e. create a new ps object with cluster 90 as default. Automatic default is the ARG level but this may not be very accurate therefore best to use cluster90 level (ARGCluster in ps object). 
-
-# print the available taxonomic ranks
-colnames(tax_table(Final.ps))
-# how many ARGs are there before agglomeration in original ps object? 
-Final.ps # 233 taxa (ARGs)
+# Now agglomerate the data to ARGcluster level - i.e. merge ARGs which are in the same ARGcluster (90% identity level)  
+# Clustering of ARGs at the 90% identity level is classified as 'ARGCluster' in the taxonomy table of the Final.ps object
+ps # 233 taxa (ARGs) pre agglomeration
 
 # Tax_glom2 function as created by AB - save this in the global environment for later use
 tax_glom2 <- function(physeq, taxrank=rank_names(physeq)[1],
@@ -345,112 +343,85 @@ tax_glom2 <- function(physeq, taxrank=rank_names(physeq)[1],
   return(physeq)
 }
 
-
 # Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
-ARGcluster.aggl <- tax_glom2(Final.ps, taxrank=rank_names(Final.ps)[6], NArm=TRUE)
-taxa_names(ARGcluster.aggl)
-# The 'taxa_names' are not the arg cluster names, as the function just chooses one ARG name instead of selecting the cluster name.
-# Check tax-table of ps object - if clustering is done correctly all other levels above 'ARG_cluster' level will be NA. 
-tax_table(ARGcluster.aggl) # Yes this is the case
+rank_names(ps_aggl)[6] # ARGCluster taxonomic rank
+ps_aggl <- ps
+ps_aggl <- tax_glom2(ps_aggl, taxrank=rank_names(ps_aggl)[6], NArm=TRUE)
+taxa_names(ps_aggl)
+# The 'taxa_names' are not the arg cluster names, as the function just chooses one ARG name instead of selecting the real cluster name.
+# Check tax table of ps object - if clustering is done correctly all other levels above 'ARG_cluster' level will be NA. 
+tax_table(ps_aggl) # Yes this is the case
 
 # How many taxa before/after agglomeration?
-ntaxa(Final.ps); ntaxa(ARGcluster.aggl) # 85 ARGClusters vs 233 ARGs 
-ARGcluster.aggl@tax_table[,6]
-head(ARGcluster.aggl@otu_table)
-taxa_names(ARGcluster.aggl)
+ntaxa(Final.ps); ntaxa(ps_aggl) # 85 ARGs now (ARGCluster 90 level) vs 233 ARGs 
+ps_aggl@tax_table[,6] # inspect cluster names
+taxa_names(ps_aggl)
 
-# Function to count the number of NAs in the taxonomy table per taxonomic rank. It returns a dataframe having the NA counts and the percentage NAs of total entries per taxrank.
-countTaxrankNAs <- function(  ps, filename="" )
-{
-  natax   <- colSums(is.na(ps@tax_table))
-  tottax  <- natax + colSums(!is.na(ps@tax_table))
-  perctax <- round( natax/tottax * 100, digits=2 )
-  overall <- data.frame(NtaxaNAs=natax, percNAs=perctax) %>% rownames_to_column("TaxRank")
-  cat( paste0("Total of ARGs = ",tottax[1],"\n"))
-  if( filename > "") { write_tsv(overall, paste0(pjbase,"_TotalNAtaxaAtTaxonomicLevelsOverall.tab")) }
-  return(overall)
-}
+# Remove blanks from ps_aggl
+ps_aggl_noblanks <- ps_aggl
+blanks <- c("veldbl16", "veldbl3", "veldbl5")
+ps_aggl_noblanks <- prune_samples(!sample_names(ps_aggl_noblanks)%in%blanks, ps_aggl_noblanks)
+ps_aggl_noblanks;ps_aggl # blanks removed - 69 samples remaining 
 
-countTaxrankNAs(ARGcluster.aggl) # 0 NAs in the ARG and ARG cluster columns
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 85 taxa and 69 samples ]
+# sample_data() Sample Data:       [ 69 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 85 taxa by 11 taxonomic ranks ]
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 85 taxa and 72 samples ]
+# sample_data() Sample Data:       [ 72 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 85 taxa by 11 taxonomic ranks ]
 
-# Remove blanks from agglomerated PS objects
-# Identify blanks and save as a new PS object
-blanks <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
-# Convert 'blancs' to a character vector of sample names
-blank_names <- as.character(sample_names(blanks))
-# Prune samples from 'ARGcluster.aggl'
-ARGcluster.aggl.noblanks <- ARGcluster.aggl
-ARGcluster.aggl.noblanks <- prune_samples(!sample_names(ARGcluster.aggl.noblanks)%in%blank_names, ARGcluster.aggl.noblanks)
-ARGcluster.aggl.noblanks;ARGcluster.aggl # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
-
-# Prune samples from 'AMRclass.aggl'
-AMRclass.aggl.noblanks <- AMRclass.aggl
-AMRclass.aggl.noblanks <- prune_samples(!sample_names(AMRclass.aggl.noblanks)%in%blank_names, AMRclass.aggl.noblanks)
-AMRclass.aggl.noblanks;AMRclass.aggl # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
-
-saveRDS(AMRclass.aggl,"Output_files//Phyloseq_objects//5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
-saveRDS(AMRclass.aggl.noblanks,"Output_files//Phyloseq_objects//6_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered_noblanks.RDS")
+saveRDS(ps_aggl,"..//Output_files//Phyloseq_objects//5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
+saveRDS(ps_aggl_noblanks,"..//Output_files//Phyloseq_objects//6_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered_noblanks.RDS")
 ```
-# Create phyloseq with livestock exposure variables
+# Summary of all phyloseq objects
 ```{r}
-blancs <- c("veldbl16", "veldbl3", "veldbl5")
-Final.ps.noblanks <- Final.ps
-Final.ps.noblanks <-  prune_samples(!sample_names(Final.ps.noblanks)%in%blancs, Final.ps.noblanks)
-Final.ps.noblanks;Final.ps # checking to ensure blanks have been removed - yes now there are 69 instead of 72 samples 
+# These are the corrections made on the data: 
+# - 1: Relative 'rarefy': ARG read count data was first rarefied according to the relative correction factors per sample (phyloseq= merged.rar3)
+# - 2: Gene length correction: Rarefied ARG read count data was then corrected for ARG lengths (now FPK) ((read counts*1000)/ARG length)  (phyloseq= merged.rar3.fpk)
+# - 3: Bacterial content correction: FPK values were normalised to total bacteria (using qPCR 16-S values for each sample)
+# - 4: Agglomerate to the 90% gene identity level
 
-# PS object which I need to add metadata to
-Final.ps.noblanks
-# Current meta data in this ps object
-Final.ps.noblanks@sam_data
+ps # ps which has undergone steps 1-3 (not agglomerated), all samples
+ps_noblanks  # ps which has undergone steps 1-3 (not agglomerated), 3 blanks removed
 
-# Read in the exposure data from MdR
-livestock.exp.df <- read.csv("Input_files//VGOcopdcaco_resistome_Livestpred_forBea_copdstatus.csv", header=TRUE, row.names='respnr')
-# Remove the randomly added column 'X' from the dataframe 
-livestock.exp.df <- subset (livestock.exp.df, select = -X)
-# Remove blanks from the dataframe 
-livestock.exp.df.noblanks <- livestock.exp.df[-(70:72),]
-livestock.exp.df.noblanks.df <- as.data.frame(livestock.exp.df.noblanks)
+ps_aggl # ps which has undergone all steps 1-4 
+ps_aggl_noblanks # ps which has undergone all steps 1-4, 3 blanks removed
 
-# copy over original ps object 
-Final.ps.noblanks.exp <- Final.ps.noblanks
-sample_data(Final.ps.noblanks.exp)
-
-sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
-sample_data(Final.ps.noblanks.exp) <- sam.data.new
-Final.ps.noblanks.exp@sam_data
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 72 samples ]
+# sample_data() Sample Data:       [ 72 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 233 taxa and 69 samples ]
+# sample_data() Sample Data:       [ 69 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 85 taxa and 72 samples ]
+# sample_data() Sample Data:       [ 72 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 85 taxa by 11 taxonomic ranks ]
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 85 taxa and 69 samples ]
+# sample_data() Sample Data:       [ 69 samples by 237 sample variables ]
+# tax_table()   Taxonomy Table:    [ 85 taxa by 11 taxonomic ranks ]
 ```
-# LUR and RF-modelled exposures
+# Summary statistics of livestock exposure
 ```{r}
-# Import the LUR and RF estimates of E.coli, staph, tetW and mecA concentrations for each of the 69 participant
-# SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
-LUR_RF_residential_predictions  <- read.xlsx("Input_files//LUR_RF_residential_predictions_copdstatus.xlsx")
-
-LUR_RF_residential_predictions <- data.frame(LUR_RF_residential_predictions, row.names = LUR_RF_residential_predictions$X1)
-LUR_RF_residential_predictions$X1 <- NULL  
-
-
-# Descriptives of participant microbial estimates
-# Compute the mean for each exposure estimate
-mean_values <- colMeans(LUR_RF_residential_predictions)
-
+# Descriptive statistics of participant microbial estimates
+mean_values <- colMeans(livestock_models[,3:10])
 # Compute the standard deviation (SD) for each exposure estimate
-sd_values <- apply(LUR_RF_residential_predictions, 2, sd)
-
+sd_values <- apply(livestock_models, 2, sd)
 # Compute the median for each exposure estimate
-median_values <- apply(LUR_RF_residential_predictions, 2, median)
-
+median_values <- apply(livestock_models, 2, median)
 # Compute the 25th percentile for each exposure estimate
-percentile_25_values <- apply(LUR_RF_residential_predictions, 2, quantile, probs = 0.25)
-
+percentile_25_values <- apply(livestock_models, 2, quantile, probs = 0.25)
 # Compute the 75th percentile for each exposure estimate
-percentile_75_values <- apply(LUR_RF_residential_predictions, 2, quantile, probs = 0.75)
-
+percentile_75_values <- apply(livestock_models, 2, quantile, probs = 0.75)
 # Compute the minimum value for each exposure estimate 
-min_values <- apply(LUR_RF_residential_predictions, 2, min)
-
+min_values <- apply(livestock_models, 2, min)
 # Compute the maximum value for each exposure estimate
-max_values <- apply(LUR_RF_residential_predictions, 2, max)
-
+max_values <- apply(livestock_models, 2, max)
 # Combine the results into a new DataFrame for better visualization
 summary_statistics_df <- data.frame(
   Mean = mean_values,
@@ -467,14 +438,224 @@ print(summary_statistics_df)
 write.xlsx(summary_statistics_df, "Output_files//LUR_RF_models//summary_statistics_df_residential_modelled_exp.xlsx")
 
 # Check distribution of modelled concentrations
-hist(LUR_RF_residential_predictions$E.coli_LUR_estimates)
-hist(LUR_RF_residential_predictions$Staph_LUR_estimates)
-hist(LUR_RF_residential_predictions$tetW_LUR_estimates)
-hist(LUR_RF_residential_predictions$mecA_LUR_estimates)
+hist(livestock_models$E.coli_LUR_estimates)
+hist(livestock_models$Staph_LUR_estimates)
+hist(livestock_models$tetW_LUR_estimates)
+hist(livestock_models$mecA_LUR_estimates)
 
-hist(LUR_RF_residential_predictions$E.coli_RF_predictions)
-hist(LUR_RF_residential_predictions$Staph_RF_predictions)
-hist(LUR_RF_residential_predictions$tetW_RF_predictions)
-hist(LUR_RF_residential_predictions$mecA_RF_predictions)
+hist(livestock_models$E.coli_RF_predictions)
+hist(livestock_models$Staph_RF_predictions)
+hist(livestock_models$tetW_RF_predictions)
+hist(livestock_models$mecA_RF_predictions)
+```
+# Study population characteristics
+```{r}
+# Microbiome ps from Warner contains metadata for the participants (this is the same for the resistome data as collected at the same period)
+microbiome.ps <- readRDS("..//Data//ps_COPD_d2_f_01%in2samples_08APR2021")
+microbiome.ps
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 1092 taxa and 356 samples ]
+# sample_data() Sample Data:       [ 356 samples by 47 sample variables ]
+# tax_table()   Taxonomy Table:    [ 1092 taxa by 7 taxonomic ranks ]
+# refseq()      DNAStringSet:      [ 1092 reference sequences ]
 
+# This ps metadata is missing data for participant 19586
+# We need to extract this data from VGO2 data
+VGO2 <- read.csv("..//Data//Raw//Complete dataset 2014 VGO3 CP 20220618.csv")
+# We also want to present livestock info for each participant - extract information on all farms within 3000m for each participant
+ps_aggl_noblanks@sam_data$AllFarm.3000m
+
+# Create metadata df from microbiome ps
+metadata_microbiome <- data.frame(sample_data(microbiome.ps))
+# Prune microbiome data to contain only time point 1 (T1) - all participants have sample taken at T1
+vector.OP.time <- "T1"
+microbiome.ps.T1 <- prune_samples(microbiome.ps@sam_data$OP_time %in% vector.OP.time, microbiome.ps)
+metadata_microbiome <- data.frame(sample_data(microbiome.ps.T1))
+metadata_microbiome$SampleID <- rownames(metadata_microbiome)
+metadata_microbiome$SampleID <- sub("T1$", "", metadata_microbiome$SampleID)
+rownames(metadata_microbiome) <- NULL
+# Create a vector of sample IDs and then prune the microbiome ps to just include these samples 
+resistome_sampleIDs <- c('10279','10839','11143','11502','11588','11814','12927','12965','12980','13571','13743','13764','13908','14587','15035','15391','15446','15573','16236','16716','16994','17053','17918','18439','18859','19586','20148','20264','20278','20407','21130','21167','21397','21548','21696','27187','27446','27641','27984','28038','29117','29401','29593','29745','30113','30148','30256','30491','30972','31465','31516','31563','31637','32372','32530','33076','33579','35287','35537','36022','36166','36424','36503','36845','37083','37250','38249','38407','38776')
+# Extract rows from metadata based on resistome_sampleIDs
+metadata_filtered <- filter(metadata_microbiome, SampleID %in% resistome_sampleIDs)
+selected_columns <- c("SampleID", "gender", "age", "bmi", "COPDgold", "farmchild", "smokeever", "packyears", "educationlevel")
+# Use select to filter columns in metadata_filtered
+metadata_filtered <- select(metadata_filtered, all_of(selected_columns))
+
+# Manually add data for participant 19586 from the VGO2 data
+row_19586 <- subset(VGO2, respnr == 19586)
+colnames(row_19586)[colnames(row_19586) == "respnr"] <- "SampleID"
+colnames(row_19586)[colnames(row_19586) == "copd_gold"] <- "COPDgold"
+row_19586_filtered <- select(row_19586, all_of(selected_columns))
+
+# Ensure columns in both datasets are the same data type
+row_19586_filtered$SampleID <- as.character(row_19586_filtered$SampleID)
+row_19586_filtered$gender <- as.character(row_19586_filtered$gender)
+row_19586_filtered$COPDgold <- as.factor(row_19586_filtered$COPDgold)
+row_19586_filtered$farmchild <- as.character(row_19586_filtered$farmchild)
+row_19586_filtered$smokeever <- as.factor(row_19586_filtered$smokeever)
+row_19586_filtered$educationlevel <- as.numeric(row_19586_filtered$educationlevel)
+
+metadata_tab1 <- bind_rows(metadata_filtered, row_19586_filtered)
+# VGO2 data had different "smokeever" coding where 0=never and 1= former smoker, change this for participant 19586
+# Find the row index where SampleID is 19586
+row_index <- which(metadata_tab1$SampleID == "19586")
+# Change the value for "smokeever" in the specific row
+metadata_tab1[row_index, "smokeever"] <- "former smoker"
+# Now, the df merged has the metadata for all resistome participants including the one missing from microbiome dataset.
+
+# Now add some livestock info
+ps_aggl_noblanks@sam_data$SampleID <- rownames(ps_aggl_noblanks@sam_data)
+farm_info <- data.frame(SampleID = ps_aggl_noblanks@sam_data$SampleID, ps_aggl_noblanks@sam_data$AllFarm.3000m)
+rownames(farm_info) <- NULL
+# Merge the datasets on SampleID
+merged_exp <- merge(metadata_tab1, farm_info, by = "SampleID", all.x = TRUE)
+colnames(merged_exp)[colnames(merged_exp) == "Final.ps.noblanks.exp.sam_data.AllFarm.3000m"] <- "AllFarm.3000m"
+# Create copdcaco column in data set
+merged_exp$copdcaco <- ifelse(merged_exp$COPDgold == 0, "Control", "COPD")
+
+# Convert blank cells to 'NA'
+merged_exp <- merged_exp %>%
+  mutate_all(as.character) %>%  # Convert all columns to character
+  mutate_all(~ na_if(., ""))    # Replace blank cells with NA
+
+# Ensure variable data types are correct 
+merged_exp$gender <- as.factor(merged_exp$gender)
+merged_exp$COPDgold <- as.factor(merged_exp$COPDgold)
+merged_exp$farmchild <- as.factor(merged_exp$farmchild)
+merged_exp$smokeever <- as.factor(merged_exp$smokeever)
+merged_exp$educationlevel <- as.factor(merged_exp$educationlevel)
+merged_exp$age <- as.numeric(merged_exp$age)
+merged_exp$bmi <- as.numeric(merged_exp$bmi)
+merged_exp$packyears <- as.numeric(merged_exp$packyears)
+merged_exp$AllFarm.3000m <- as.numeric(merged_exp$AllFarm.3000m)
+
+# Function to compute p-values between COPD case and control groups
+pvalue <- function(x, ...) {
+    # Construct vectors of data y, and groups (strata) g
+    y <- unlist(x)
+    g <- factor(rep(1:length(x), times=sapply(x, length)))
+    if (is.numeric(y)) {
+        # For numeric variables, perform a standard 2-sample t-test
+        p <- t.test(y ~ g)$p.value
+    } else {
+        # For categorical variables, perform a chi-squared test of independence
+        p <- chisq.test(table(y, g))$p.value
+    }
+    # Format the p-value, using an HTML entity for the less-than sign.
+    # The initial empty string places the output on the line below the variable label.
+    c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+# Numeric variables (age, age, bmi, packyears, AllFarm.3000m): ANOVA performed. The p-value is derived from the ANOVA results.
+# Categorical Variables (both binary and with > 2 levels)(gender, COPDgold, farmchild, smokeever, educationlevel): chi-squared test is performed.
+
+# Relabel populations 
+merged_exp$copdcaco <- 
+  factor(merged_exp$copdcaco, 
+         levels=c('Control','COPD'),
+         labels=c("Control population",
+                  "COPD patients"))
+
+merged_exp <- merged_exp %>%
+  mutate(gender = recode(gender, `0` = "Male", `1` = "Female"))%>%
+  mutate(farmchild = recode(farmchild, `0` = "No", `1` = "Yes"))%>%
+  mutate(educationlevel= recode(farmchild, `0` = "Low", `1` = "Medium", `2` = "High"))%>%
+  mutate(smokeever= recode(smokeever, `0` = "Never", `1` = "Former smoker"))
+
+# Set labels for table 
+label(merged_exp$gender) <- "Gender"
+label(merged_exp$age) <- "Age"
+label(merged_exp$bmi) <- "BMI"
+label(merged_exp$COPDgold) <- "COPD GOLD grade"
+label(merged_exp$farmchild) <- "Childhood on farm"
+label(merged_exp$smokeever) <- "Smoking status"
+label(merged_exp$packyears) <- "Pack-years of cigarettes smoked"
+label(merged_exp$educationlevel) <- "Education level"
+label(merged_exp$AllFarm.3000m) <- "Number of farms within 3km radius"
+
+# Use table1 to create table 
+resistome_table1 <- table1(
+  ~ gender + age + bmi + COPDgold + farmchild + smokeever + packyears + educationlevel + AllFarm.3000m| copdcaco,
+  data = merged_exp, 
+  extra.col = list(`P-value`=pvalue),
+  overall = F
+)
+# NB merged_exp for one CP is missing - the one from which microbiome data was removed
+getwd()
+write.csv(resistome_table1, file = "../Output_files/Descriptives/table1.csv")
+write.xlsx(resistome_table1, file ="../Output_files/Descriptives/table1.xlsx" )
+
+# Age and bmi p-values are the same - double check this 
+ttest_result_age <- t.test(age ~ copdcaco, data = merged_exp)
+# Print the result
+print(ttest_result_age)
+hist(merged_exp$age)
+
+ttest_result_bmi <- t.test(bmi ~ copdcaco, data = merged_exp)
+# Print the result
+print(ttest_result_bmi)
+
+hist(merged_exp$age)
+hist(merged_exp$bmi)
+```
+
+# Phyloseq for Zenodo
+```{r}
+# Check if the row names match between 'merged' and 'ARGlen'
+rownames(merged@tax_table)
+row_names_match <- all(rownames(merged@tax_table) == rownames(ARGlen))
+
+if (row_names_match) {
+  cat("Row names match between 'merged' and 'ARGlen'.\n")
+} else {
+  cat("Row names do not match between 'merged' and 'ARGlen'.\n")
+}
+
+# Create a new tax_table with the additional 'ARGlen' column
+new_tax_table_df <- data.frame(merged@tax_table, ARGlen = ARGlen$ARGlen)
+colnames <- colnames(new_tax_table_df)
+
+new_tax_table <- tax_table(new_tax_table_df)
+colnames(tax_table(new_tax_table)) <- colnames
+taxa_names(new_tax_table) <- rownames(new_tax_table_df)
+
+zenodo_ps <- merged
+zenodo_ps@tax_table <- new_tax_table
+zenodo_ps@tax_table
+
+# Now keep only information we want for the zenodo ps object
+# Taxonomy table
+# Create a copy of the tax_table
+new_tax_table_zenodo <- tax_table(zenodo_ps)
+colnames(tax_table(zenodo_ps))
+# Define 'tax_table_columns_to_keep' as a vector of the column names you want to keep
+tax_table_columns_to_keep <- c("ARG_class", "ARGCluster", "ARGlen")
+# Subset the tax_table to keep only the specified columns
+new_tax_table_zenodo <- new_tax_table_zenodo[, tax_table_columns_to_keep]
+# Replace the tax_table in your phyloseq object with the modified one
+zenodo_ps@tax_table <- new_tax_table_zenodo
+
+# Sample data 
+new_sam_data_zenodo <- zenodo_ps@sam_data
+colnames(zenodo_ps@sam_data)
+sam_data_columns_to_keep <- c("copdcaco", "qPCR_16S_ngml", "Enrich_pool_num", "RelativeCorrect_readpair_counts")
+new_sam_data_zenodo <- new_sam_data_zenodo[, sam_data_columns_to_keep]
+zenodo_ps@sam_data <- new_sam_data_zenodo
+
+# Otu table - keep as normal (no corrections)
+zenodo_ps@otu_table
+
+# Remove duplicate sample (13674) from the dataset
+zenodo_ps <- prune_samples(sample_names(zenodo_ps) != "13674", zenodo_ps) 
+zenodo_ps # Final PS object therefore now has 72 samples
+
+resistome_samdata<- zenodo_ps@sam_data
+resistome_samdata$ParticipantID <- rownames(resistome_samdata)
+write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
+
+
+zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
+zenodo_ps@sam_data$copdcaco
+zenodo_ps
+saveRDS(zenodo_ps,"..//Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
 ```

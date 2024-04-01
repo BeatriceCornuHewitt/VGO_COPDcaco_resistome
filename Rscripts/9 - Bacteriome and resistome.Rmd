@@ -7,6 +7,7 @@ output: html_notebook
 ```{r}
 # Procrustes plot used to look at the association between the resistome (90% ID clustering) and the bacteriome
 microbiome.ps <- readRDS("..//Data//ps_COPD_d2_f_01%in2samples_08APR2021")
+microbiome.ps@sam_data$SampleID
 microbiome.ps # Inspect microbiome phyloseq object 
 # There are 356 samples in total as microbiome data is longitudinal with 3 time points therefore more than one sample per sample ID
 saveRDS(microbiome.ps, file = "..//Data//raw//ps_COPD_d2_f_01%in2samples_08APR2021.rds")

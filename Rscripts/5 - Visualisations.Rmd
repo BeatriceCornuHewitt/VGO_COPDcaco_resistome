@@ -284,15 +284,22 @@ toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
 }
 
 # Remove blanks
-ARGcluster_aggl_not_clusternames <- ARGcluster_aggl
-ARGcluster_aggl_not_clusternames <- prune_samples(!sample_data(ARGcluster_aggl_not_clusternames)$copdcaco == "blanc", ARGcluster_aggl_not_clusternames)
+ARGcluster_aggl_no_blanks <- ARGcluster.aggl
+ARGcluster_aggl_no_blanks <- prune_samples(!sample_data(ARGcluster_aggl_no_blanks)$copdcaco == "blanc", ARGcluster_aggl_no_blanks)
 
 # New ps object which holds only the 10 most abundant ARGs (for COPD and control samples)
-top10_ARGclusters_overall<- toptaxa(ARGcluster_aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10_ARGclusters_overall<- toptaxa(ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10_ARGclusters_overall
 
-top10_ARGclusters_overall_noblanks<- toptaxa(ARGcluster_aggl_not_clusternames, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10_ARGclusters_overall_noblanks<- toptaxa(ARGcluster_aggl_no_blanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10_ARGclusters_overall_noblanks
+
+# calculate Total Abundance
+total_abundance <- sum(taxa_sums(ARGcluster_aggl_no_blanks))
+# Sum Abundances of Top-10 Taxa
+top_taxa_abundance <- sum(taxa_sums(ARGcluster_aggl_no_blanks)[top10_ARGclusters_overall_noblanks])
+# Calculate Proportion
+print(top_taxa_abundance / total_abundance)
 
 # Top 10 in copd samples 
 top10_ARGclusters_COPD<- toptaxa(COPD_ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
@@ -311,9 +318,11 @@ top10clusternames_control <- tt$ARGCluster[ row.names(tt) %in% top10_ARGclusters
 
 # Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
 desired_taxa_names <- top10_ARGclusters_overall_noblanks
-taxa_to_keep <- taxa_names(ARGcluster_aggl_not_clusternames) %in% desired_taxa_names
-Final_ps_top10ARGClusters <- prune_taxa(taxa_to_keep, ARGcluster_aggl_not_clusternames)
+taxa_to_keep <- taxa_names(ARGcluster_aggl_no_blanks) %in% desired_taxa_names
+Final_ps_top10ARGClusters <- prune_taxa(taxa_to_keep, ARGcluster_aggl_no_blanks)
 Final_ps_top10ARGClusters@otu_table
+colnames(Final_ps_top10ARGClusters@otu_table)
+top10_ARGclusters_overall_noblanks
 
 Resistome_ps_noblanks.names <- Resistome_ps_noblanks
 colnames(Final_ps_top10ARGClusters@otu_table) <- top10clusternames_noblanks
@@ -558,8 +567,6 @@ pheatmap(
 # Plot for manuscript
 ```{r}
 # Stacked bar plots
-```{r}
-
 bar.graphs.relative <- function(physeq, var1 = "ungrouped", level, displayx = 10, filetype = ".jpg") {
   if (level == "Species") {
     print("Error this level is too fine for amplicon sequencing")
@@ -628,6 +635,5 @@ ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patch
 ```
 
 
-```
 
 
