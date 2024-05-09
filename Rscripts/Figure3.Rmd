@@ -1,0 +1,98 @@
+---
+title: "Figure 3"
+author: "b.cornuhewitt@uu.nl"
+---
+# Packages
+```{r}
+library(ggplot2); library(patchwork)
+```
+# Figure 3 
+```{r}
+# Set the theme globally
+theme_set(theme_cowplot())
+
+# Alpha diversity - plots created in script "6 - Alpha diversity" 
+Shannon <- Shannon.diversity.plot + 
+  geom_text(x = 1.5, y = 3.2, label = expression(paste("T-test, ", italic("p"), " value = 0.047")), size = 4, inherit.aes = FALSE) +
+  custom_theme
+
+Simpson <- Simpson.diversity.plot + 
+  geom_text(x = 1.5, y = 0.42, label = expression(paste("Wilcoxon test, ", italic("p"), " value = 0.37")), size = 4, inherit.aes = FALSE) +
+  custom_theme
+
+Observed <- Observed.diversity.plot + 
+  geom_text(x = 1.5, y = 100, label = expression(paste("Wilcoxon test, ", italic("p"), " value = 0.17")), size = 4, inherit.aes = FALSE) +
+  custom_theme
+
+# Beta diversity
+PCoA <- plot_ordination(ps_aggl_noblanks, ordination, color = "copdcaco", shape = "copdcaco") +
+  ggtitle(NULL) +
+  labs(legend = "COPD/control status") +
+  geom_point(aes(color = copdcaco), size = 4) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  theme(
+    plot.title = element_text(size = 12),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10)
+  ) +
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = copdcaco, color = copdcaco)) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(x = 0.40, y = -0.44, label = expression(paste(italic("R")^2, " = 2%, ", italic("p"), " value = 0.19")), size=4, vjust = 1, parse = TRUE, show.legend = FALSE, color = "black") +
+  xlab("PCo1 (28.5%) ") +
+  ylab("PCo2 (17.2%)") +
+  coord_fixed(ratio = 1) +
+  guides(color = guide_legend(title = "Study population"),
+         shape = guide_legend(title = "Study population"),
+         fill = guide_legend(title = "Study population"))
+
+
+# Procrustes PCoA 
+PCoA.pro.plot <- ggplot(PCoA.pro.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol, shape="Microbiome", fill=copdcontrol), size = 3) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol, shape="Resistome", fill=copdcontrol), size = 3) +
+  geom_segment(aes(x=rda1, y=rda2, xend=xrda1, yend=xrda2, colour=copdcontrol), arrow=arrow(length=unit(0.2, "cm")))
+
+Final.PCoa.pro2 <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +  
+  scale_shape_manual(values = c("Microbiome" = 24, "Resistome" = 21)) +  
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +  
+  geom_text(x = 0.25, y = -0.14, label = "Correlation = 0.46", size=4, vjust = 1) +
+  geom_text(x = 0.25, y = -0.16, label = expression(paste(italic("p"), " value = 1e-04")), size=4, vjust = 1) +  
+  labs(y = "PCo2", x = "PCo1", size = 12) +
+  guides(color = guide_legend(title = "Study population", override.aes = list(shape = NA)),
+         shape = guide_legend(title = "Microbiome/Resistome"),
+         fill = guide_legend(title = "Study population")) + 
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12), 
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10)
+  )
+
+# Combine the plots together using patchwork
+# Define a custom theme
+custom_theme <- theme(
+  text = element_text(family = "Arial", size = 12),  # Specify font family and size
+  plot.title = element_text(size = 12),
+  axis.text = element_text(size = 12),
+  axis.title = element_text(size = 12),
+  legend.text = element_text(size = 10),
+  legend.title = element_text(size = 10)
+)
+
+# Create the patchwork
+patched <- (Shannon | Simpson | Observed) / 
+              (PCoA | Final.PCoa.pro2) 
+
+patched_labelled <- patched + plot_annotation(tag_levels = 'a')& 
+  theme(plot.tag = element_text(size = 16))
+# Save the patchwork
+ggsave(filename = "../Output_files/Manuscript_figures/patched_labelled.svg", width = 12, height = 8, plot = patched_labelled)
+
+
+ggsave(filename = "../Output_files/Manuscript_figures/patched_labelled.pdf", width = 12, height = 8, plot = patched_labelled)
+
+```
+
