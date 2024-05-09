@@ -1,35 +1,41 @@
 ---
 title: "3 - Identify contaminants"
-output: html_notebook
+author: "b.cornuhewitt@uu.nl"
 ---
+# Packages
+```{r}
+library(decontam); library(phyloseq); library(ggplot2)
+```
+
 # Check for contaminants in the dataset
 ```{r}
+ps <- readRDS("../Output_files/Phyloseq_objects/4_COPD_resistome_phyloseq_object_rarefied_FPKM.Rds")
 # We aim to identify contaminants using the decontam package in R
 # Visualise library sizes in each sample, label based on copd case-control status
-df.libsize <- as.data.frame(sample_data(Final.ps)) 
-df.libsize$LibrarySize <- sample_sums(Final.ps)
-df.libsize <- df.libsize[order(df.libsize$LibrarySize),]
-df.libsize$Index <- seq(nrow(df.libsize))
-ggplot(data=df.libsize, aes(x=Index, y=LibrarySize, color=copdcaco)) + geom_point()
+df_libsize <- as.data.frame(sample_data(ps)) 
+df_libsize$LibrarySize <- sample_sums(ps)
+df_libsize <- df_libsize[order(df_libsize$LibrarySize),]
+df_libsize$Index <- seq(nrow(df_libsize))
+ggplot(data=df_libsize, aes(x=Index, y=LibrarySize, color=copdcaco)) + geom_point()
 
 # Identify Contaminants - Frequency method 
 # Sequences from contaminating ARGs are likely to have a frequency that inversely relates with sample DNA concentration (with correction factors)
 # Create new column with DNA content with correction factor per sample - i.e. DNA_ngul_clariostar * TotalCorrectionMaxed
-corrected.DNAinput <- Final.ps@sam_data$DNA_ngul_clariostar *
-Final.ps@sam_data$TotalCorrectionMaxed
-Final.ps@sam_data$correctedDNAinput <- corrected.DNAinput
-contam.df.freq <- isContaminant(Final.ps, method="frequency", conc = "correctedDNAinput")
-head(contam.df.freq)
-table(contam.df.freq$contaminant) # 17 out of 233 ARGs are classified as contaminants
-which(contam.df.freq$contaminant) # Names of the contaminants identified
-taxa_names(Final.ps)[sample(which(contam.df.freq$contaminant))]
+corrected.DNAinput <- ps@sam_data$DNA_ngul_clariostar *
+ps@sam_data$TotalCorrectionMaxed
+ps@sam_data$correctedDNAinput <- corrected.DNAinput
+contam_df_freq <- isContaminant(ps, method="frequency", conc = "correctedDNAinput")
+head(contam_df_freq)
+table(contam_df_freq$contaminant) # 17 out of 233 ARGs are classified as contaminants
+which(contam_df_freq$contaminant) # Names of the contaminants identified
+taxa_names(ps)[sample(which(contam_df_freq$contaminant))]
 
 # Now we look at what a clear non-contaminant (e.g. 1st ARG), and a clear contaminant (e.g 11th ARG) look like:
-plot_frequency(Final.ps, taxa_names(Final.ps)[c(1,16)], conc="correctedDNAinput") + xlab("correctedDNAinput")
+plot_frequency(ps, taxa_names(ps)[c(1,16)], conc="correctedDNAinput") + xlab("correctedDNAinput")
 # The dashed black line shows the model of a non contaminant sequence feature for which frequency is expected to be independent of the input DNA concentration. The red line shows the model of a contaminant sequence feature, for which frequency is expected to be inversely proportional to input DNA concentration, as contaminating DNA will make up a larger fraction of the total DNA in samples with very little total DNA. Gene 16  fits the red contaminant model better than ARG 1 (aadD_2_M19465). 
 # Inspecting more of the ARGs that were classified as contaminants - to make sure they look like what we expect: 
 set.seed(100)
-plot_frequency(Final.ps,taxa_names(Final.ps)[sample(which(contamdf.freq$contaminant),6)], conc="correctedDNAinput") + xlab("correctedDNAinput")
+plot_frequency(ps,taxa_names(ps)[sample(which(contamdf.freq$contaminant),6)], conc="correctedDNAinput") + xlab("correctedDNAinput")
 
 
 # Identify Contaminants - Prevalence method 
@@ -38,30 +44,30 @@ plot_frequency(Final.ps,taxa_names(Final.ps)[sample(which(contamdf.freq$contamin
 # In this method, the prevalence (presence/absence across samples) of each sequence feature in true samples COPD/control is compared to the prevalence in blanks to identify contaminants.
 # In my phyloseq object, "copdcaco" is the sample variable that holds the COPD/control/blank status. We’ll summarize that data as a logical variable, with TRUE for blank samples, as that is the form required by isContaminant.
 #In the prevalence test there is a special value worth knowing, threshold=0.5, that will identify as contaminants all sequences that are are more prevalent in blanks than in copd/control samples
-Final.ps@sam_data$copdcaco
-sample_data(Final.ps)$is.neg <- sample_data(Final.ps)$copdcaco == "blanc"
-contam.df.prev <- isContaminant(Final.ps, method="prevalence", neg="is.neg")
-table(contam.df.prev$contaminant)
+ps@sam_data$copdcaco
+sample_data(ps)$is.neg <- sample_data(ps)$copdcaco == "blanc"
+contam_df_prev <- isContaminant(ps, method="prevalence", neg="is.neg")
+table(contam_df_prev$contaminant)
 # This method finds 4 ARGs as contaminants 
 # Figure out which ARGs are flagged as the contaminants
-which(contam.df.prev$contaminant) # ARGs  45, 95, 153 & 194 are classified as contaminants 
-taxa_names(Final.ps)[sample(which(contam.df.prev$contaminant))]
+which(contam_df_prev$contaminant) # ARGs  45, 95, 153 & 194 are classified as contaminants 
+taxa_names(ps)[sample(which(contam_df_prev$contaminant))]
 # prevalence based contaminant identification has identified fewer contaminants than frequency-based method 
 # Make phyloseq object of presence-absence in negative controls and true samples
-ps.pa <- transform_sample_counts(Final.ps, function(abund) 1*(abund>0))
-ps.pa.neg <- prune_samples(sample_data(ps.pa)$copdcaco == "blanc", ps.pa)
-ps.pa.pos <- prune_samples(sample_data(ps.pa)$copdcaco == c(1,0), ps.pa)
+ps_pa <- transform_sample_counts(ps, function(abund) 1*(abund>0))
+ps_pa_neg <- prune_samples(sample_data(ps_pa)$copdcaco == "blanc", ps_pa)
+ps_pa_pos <- prune_samples(sample_data(ps_pa)$copdcaco == c(1,0), ps_pa)
 # Make data.frame of prevalence in positive and negative samples
-df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
-                      contaminant=contam.df.prev$contaminant)
-ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+df_pa <- data.frame(pa.pos=taxa_sums(ps_pa_pos), pa.neg=taxa_sums(ps_pa_neg),
+                      contaminant=contam_df_prev$contaminant)
+ggplot(data=df_pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
   xlab("Prevalence (blanc samples)") + ylab("Prevalence (COPD and control Samples)")
 # This graph shows that the ARGs seem to split pretty cleanly into a branch that shows up mostly in positive samples, and another that shows up mostly in negative controls, and the contaminant assignment (at default probability threshold) has done a good job of identifying those mostly in negative controls.
 
 # Identify Contaminants - Combined method 
 # This method combines the frequency-based and prevalence-based scores into a composite score - this approach has been shown to provide the most robust classifications when both DNA concentration and negative control data are available.
 contam.df.comb <- isContaminant(
-  Final.ps,
+  ps,
   conc = "correctedDNAinput",
   neg = "is.neg",
   method = "combined",
@@ -73,30 +79,30 @@ table(contam.df.comb$contaminant)
 # Figure out which ARGs are flagged as the contaminants
 which(contam.df.comb$contaminant) # ARGs "25", "38" ...are classified as contaminants 
 # View ARG names of contaminants
-taxa_names(Final.ps)[sample(which(contam.df.comb$contaminant))]
+taxa_names(ps)[sample(which(contam.df.comb$contaminant))]
 
-# In summary, number of ARGs flagged as contaminants by each method are: frequency = 17, prev =4, combined =8. 
+# In summary, number of ARGs flagged as contaminants by each method are: frequency=17, prev=4, combined=8. 
 
 # Plot of abundances of these 8 genes over COPD, control and blank samples
 # "tet(C)_2_AY046276"     "sul1_2_U12338"         "blaOXA-134_1_HQ122933" "tet(A)_1_AJ313332"     "aac(3)-IId_1_EU022314" "blaOXA-60d_1_AY664506" "blaZ_138_CP003979"     "tet(A)_6_AF534183" were identified as contaminants 
-Final.ps@otu_table@.Data$aadD_2_M19465
-is.recursive(Final.ps@otu_table@.Data)
-is.atomic(Final.ps@otu_table@.Data)
+ps@otu_table@.Data$aadD_2_M19465
+is.recursive(ps@otu_table@.Data)
+is.atomic(ps@otu_table@.Data)
 par(mfrow = c(4, 4))
 # plot for blaOXA-134_1_HQ122933 (gene #25)
-boxplot(Final.ps@otu_table@.Data[,25]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,25]~ps@sam_data$copdcaco)
 # aac(3)-IId_1_EU022314
-boxplot(Final.ps@otu_table@.Data[,38]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,38]~ps@sam_data$copdcaco)
 # blaOXA-60d_1_AY664506
-boxplot(Final.ps@otu_table@.Data[,45]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,45]~ps@sam_data$copdcaco)
 #tet(A)_1_AJ313332
-boxplot(Final.ps@otu_table@.Data[,95]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,95]~ps@sam_data$copdcaco)
 #sul1_2_U12338
-boxplot(Final.ps@otu_table@.Data[,123]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,123]~ps@sam_data$copdcaco)
 # tet(C)_2_AY046276
-boxplot(Final.ps@otu_table@.Data[,135]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,135]~ps@sam_data$copdcaco)
 # tet(A)_6_AF534183
-boxplot(Final.ps@otu_table@.Data[,146]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,146]~ps@sam_data$copdcaco)
 #blaZ_138_CP003979
-boxplot(Final.ps@otu_table@.Data[,171]~Final.ps@sam_data$copdcaco)
+boxplot(ps@otu_table@.Data[,171]~ps@sam_data$copdcaco)
 ```
