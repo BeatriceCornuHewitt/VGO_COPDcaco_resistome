@@ -1,7 +1,11 @@
 ---
 title: "2 - Load data and create phyloseq"
-output: html_notebook
+author: "b.cornuhewitt@uu.nl"
 ---
+# Packages
+```{r}
+library(phyloseq);library(tidyr);library(dplyr);library(openxlsx); library(textshape)
+```
 # Parameters and folders 
 ```{r}
 # Phyloseq object consists of 3 parts (i.e. it is an S4 object linking different spreadsheets (S4 objects are particularly useful for handling complex data structures in bioinformatics, statistics, and other data-intensive fields) – in our case 3 (where otu_table = ARGs in each sample, sample_data = the qPCR 16S metadata, tax_table = categorisations of genes into clusters). 
@@ -344,9 +348,9 @@ tax_glom2 <- function(physeq, taxrank=rank_names(physeq)[1],
 }
 
 # Use function tax_glom2 - 6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
-rank_names(ps_aggl)[6] # ARGCluster taxonomic rank
 ps_aggl <- ps
 ps_aggl <- tax_glom2(ps_aggl, taxrank=rank_names(ps_aggl)[6], NArm=TRUE)
+rank_names(ps_aggl)[6] # ARGCluster taxonomic rank
 taxa_names(ps_aggl)
 # The 'taxa_names' are not the arg cluster names, as the function just chooses one ARG name instead of selecting the real cluster name.
 # Check tax table of ps object - if clustering is done correctly all other levels above 'ARG_cluster' level will be NA. 
