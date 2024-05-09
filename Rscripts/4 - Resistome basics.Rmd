@@ -2,19 +2,29 @@
 title: "4 - Resistome basics"
 output: html_notebook
 ---
+# Packages
+```{r}
+library(phyloseq); library(openxlsx); library(ggplot2); library(ggpubr); library(ggthemes); library(dplyr); library(scales); library(ggvenn); library(RColorBrewer); library(microbiome); library(parallel); library(vegan)
+
+```
+# Read in the ps object
+```{r}
+ps <- readRDS("../Output_files/Phyloseq_objects/4_COPD_resistome_phyloseq_object_rarefied_FPKM.Rds")
+ps_aggl <- readRDS("../Output_files/Phyloseq_objects/5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
+```
 # Number of ARGs per AMR class
 ```{r}
 # Show available ranks in the dataset
-rank_names(Final.ps)
+rank_names(ps_aggl)
 
 # Table to show the number of ARG clusters categorised into each AMR class 
-table("tax_table"(ARGcluster.aggl)[, "ARG_class"], exclude = NULL)
+table("tax_table"(ps_aggl)[, "ARG_class"], exclude = NULL)
 # 85 ARGs categorised into 8 AMR classes 
 ```
 # Abundance of ARG clusters across COPD, control and blank groups
 ```{r}
 # New ps with only COPD patients
-COPD_ps <- subset_samples(ARGcluster.aggl, copdcaco == "1")
+COPD_ps <- subset_samples(ps_aggl, copdcaco == "1")
 # Access the otu_table and tax_table from the COPD_ps phyloseq object
 COPD_otu_table <- otu_table(COPD_ps)
 COPD_tax_table <- tax_table(COPD_ps)
@@ -26,7 +36,7 @@ COPD_ARGCluster_names <- as.character(COPD_tax_table[COPD_non_zero_taxa, "ARGClu
 print(COPD_ARGCluster_names)
 
 # Controls 
-control_ps <- subset_samples(ARGcluster.aggl, copdcaco == "0")
+control_ps <- subset_samples(ps_aggl, copdcaco == "0")
 # Access the otu_table and tax_table from the control_ps phyloseq object
 control_otu_table <- otu_table(control_ps)
 control_tax_table <- tax_table(control_ps)
@@ -38,7 +48,7 @@ control_ARGCluster_names <- as.character(control_tax_table[control_non_zero_taxa
 print(control_ARGCluster_names)
 
 # Blanks 
-blank_ps <- subset_samples(ARGcluster.aggl, copdcaco == "blanc")
+blank_ps <- subset_samples(ps_aggl, copdcaco == "blanc")
 # Access the otu_table and tax_table from the COPD_ps phyloseq object
 blanks_otu_table <- otu_table(blank_ps)
 blanks_tax_table <- tax_table(blank_ps)
@@ -59,14 +69,14 @@ write.xlsx(df_copd_ARGclusters, "Data//processed//Basic_resistome_explorations//
 write.xlsx(df_control_ARGclusters, "Output_files//Basic_resistome_explorations//df_control_ARGclusters.xlsx", rowNames = FALSE)
 write.xlsx(df_blank_ARGclusters, "Output_files//Basic_resistome_explorations//df_blank_ARGclusters.xlsx", rowNames = FALSE)
 ```
-## 16S qPCR DNA load across COPD, control and blank groups
+# 16S qPCR DNA load across COPD, control and blank groups
 ```{r}
 # this ps object is clustered at the 90% identity level and blanks removed
-ARGcluster.aggl.noblanks 
+ps_aggl_noblanks
 
 # Subset the phyloseq object based on 'copdcaco' metadata column
-copd_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 1)
-control_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 0)
+copd_data <- subset_samples(ps_aggl_noblanks, copdcaco == 1)
+control_data <- subset_samples(ps_aggl_noblanks, copdcaco == 0)
 
 # Calculate summary statistics for 'qPCR_16S_ngml' for COPD patients and controls
 copd_qPCR16S_summary <- summary(copd_data@sam_data$qPCR_16S_ngml)
@@ -109,7 +119,7 @@ Bacterial_load_comparison <- ggplot(plot_data, aes(x = Group, y = Bacterial_Load
 # Save the ggplot to the output_files folder
 ggsave(filename = "Output_files/Bacterial_load_comparison.png", plot = Bacterial_load_comparison, width = 8, height = 6, dpi = 300)
 ```
-## Checking FPK values across COPD, control and blank groups
+# Checking FPK values across COPD, control and blank groups
 ```{r}
 # FPK means not corrected for 16S qPCR values (Fragments Per Kilobase of transcript (FPK))
 PS_FPK <- readRDS("..//Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS") # this is the PS object which is not corrected for 16S qPCR values
@@ -119,21 +129,21 @@ PS_FPK <- prune_samples(sample_names(PS_FPK) != "13674", PS_FPK)
 PS_FPK
 
 # Now agglomerate the data to ARG cluster level (as above)
-# Use tax_glom2 function - #6 is the ARGCluster level in the tax_table of Final.ps object. This creates a new ps object with ARGcluster as default 
-ARGcluster.aggl.FPK <- tax_glom2(PS_FPK, taxrank=rank_names(PS_FPK)[6], NArm=TRUE)
-ARGcluster.aggl.FPK # Now 85 taxa (as before)
+# Use tax_glom2 function - #6 is the ARGCluster level in the tax_table of ps object. This creates a new ps object with ARGcluster as default 
+ps_aggl_noblanks.FPK <- tax_glom2(PS_FPK, taxrank=rank_names(PS_FPK)[6], NArm=TRUE)
+ps_aggl_noblanks.FPK # Now 85 taxa (as before)
 
 # remove blanks
 blanks <- c("veldbl16", "veldbl3", "veldbl5")
 
-ARGcluster.aggl.FPK.noblanks <- ARGcluster.aggl.FPK
-ARGcluster.aggl.FPK.noblanks <-  prune_samples(!sample_names(ARGcluster.aggl.FPK.noblanks) 
-                                               %in% blanks, ARGcluster.aggl.FPK.noblanks)
+ps_aggl_noblanks.FPK.noblanks <- ps_aggl_noblanks.FPK
+ps_aggl_noblanks.FPK.noblanks <-  prune_samples(!sample_names(ps_aggl_noblanks.FPK.noblanks) 
+                                               %in% blanks, ps_aggl_noblanks.FPK.noblanks)
 
 # Now can compute FPK per individual 
 # Subset the data into COPD and control groups
-copd_data_FPK <- subset_samples(ARGcluster.aggl.FPK.noblanks, copdcaco == 1)
-control_data_FPK <- subset_samples(ARGcluster.aggl.FPK.noblanks, copdcaco == 0)
+copd_data_FPK <- subset_samples(ps_aggl_noblanks.FPK.noblanks, copdcaco == 1)
+control_data_FPK <- subset_samples(ps_aggl_noblanks.FPK.noblanks, copdcaco == 0)
 
 # Function to calculate total FPKM for each individual
 calculate_total_FPK <- function(physeq_data) {
@@ -183,16 +193,16 @@ FPK_comparison <- ggplot(plot_data_FPK, aes(x = Group, y = Total_FPK, fill = Gro
   theme(plot.background = element_rect(fill = "white"))
 
 # Save the ggplot to the output_files folder
-ggsave(filename = "..//Output_files/FPK_comparison.png", plot = FPK_comparison, width = 8, height = 6, dpi = 300)
+ggsave(filename = "../Output_files/FPK(M)_comparison/FPK_comparison.png", plot = FPK_comparison, width = 8, height = 6, dpi = 300)
 ```
 # Checking FPKM values
 ```{r}
 # Corrected for 16S qPCR (Fragments Per Kilobase of transcript per Million mapped reads (FPKM))
-ARGcluster.aggl.noblanks # this is the fully corrected PS object (FPKM)
+ps_aggl_noblanks # this is the fully corrected PS object (FPKM)
 
 # Subset the data into COPD and control groups
-copd_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 1)
-control_data <- subset_samples(ARGcluster.aggl.noblanks, copdcaco == 0)
+copd_data <- subset_samples(ps_aggl_noblanks, copdcaco == 1)
+control_data <- subset_samples(ps_aggl_noblanks, copdcaco == 0)
 
 # Function to calculate total FPKM for each individual
 calculate_total_FPKM <- function(physeq_data) {
@@ -203,7 +213,7 @@ calculate_total_FPKM <- function(physeq_data) {
 # Calculate total FPKM for COPD and control groups
 copd_total_FPKM <- calculate_total_FPKM(copd_data)
 control_total_FPKM <- calculate_total_FPKM(control_data)
-combined_total_FPKM <- calculate_total_FPKM(ARGcluster.aggl.noblanks)
+combined_total_FPKM <- calculate_total_FPKM(ps_aggl_noblanks.noblanks)
 
 summary(copd_total_FPKM)
 summary(control_total_FPKM)
@@ -240,7 +250,7 @@ FPKM_comparison <- ggplot(plot_data_FPKM, aes(x = Group, y = Total_FPKM, fill = 
   theme(plot.background = element_rect(fill = "white"))
 
 # Save the ggplot to the output_files folder
-ggsave(filename = "..//Output_files/FPKM_comparison.png", plot = FPKM_comparison, width = 8, height = 6, dpi = 300)
+ggsave(filename = "../Output_files/FPK(M)_comparison/FPKM_comparison.png", plot = FPKM_comparison, width = 8, height = 6, dpi = 300)
 ```
 # Additional checks - FPKM per sample
 ```{r}
@@ -273,7 +283,7 @@ summary(transformed_rounded_FPKM)
 # Additional checks - FPKM per ARG
 ```{r}
 # Extract the OTU table
-ARG_table <- as.data.frame(otu_table(ARGcluster.aggl.noblanks))
+ARG_table <- as.data.frame(otu_table(ps_aggl_noblanks))
 
 # Total FPKM per ARG
 ## Raw FPKM
@@ -302,7 +312,7 @@ ggplot(subset_data_0to100, aes(x = ARG, y = Total_FPKM)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ## Round then transform the raw FPKM per ARG
-ARG_table_rounded <- as.data.frame(round(otu_table(ARGcluster.aggl.noblanks)))
+ARG_table_rounded <- as.data.frame(round(otu_table(ps_aggl_noblanks.noblanks)))
 ARG_table_rounded_transformed <-  ARG_table_rounded* 1e9
 total_fpkm_per_arg_rounded_transformed <- colSums(ARG_table_rounded_transformed)
 arg_fpkm_data_rounded_transformed <- data.frame(Total_FPKM_rounded_transformed = total_fpkm_per_arg_rounded_transformed)
@@ -316,7 +326,7 @@ mean(arg_fpkm_data_rounded_transformed$Total_FPKM)
 max(arg_fpkm_data_rounded_transformed$Total_FPKM)
 
 ## Transform then round the raw FPKM
-ARG_table_transformed <- as.data.frame(otu_table(ARGcluster.aggl.noblanks)* 1e9)
+ARG_table_transformed <- as.data.frame(otu_table(ps_aggl_noblanks.noblanks)* 1e9)
 ARG_table_transformed_rounded <- round(ARG_table_transformed)
 total_fpkm_per_arg_transformed_rounded <- colSums(ARG_table_transformed_rounded)
 arg_fpkm_data_transformed_rounded <- data.frame(Total_FPKM_transformed_rounded = total_fpkm_per_arg_transformed_rounded)
@@ -332,11 +342,11 @@ max(arg_fpkm_data_transformed_rounded$Total_FPKM_transformed_rounded)
 # Rarefaction curves
 ```{r}
 # Since there are no FPKM values <1, instead of the multiply by billion method, we can just round for alpha diversity calculations
-Final.ps.round <- Final.ps
-Final.ps.round@otu_table@.Data <- round(Final.ps.round@otu_table@.Data) 
+ps_round <- ps
+ps_round@otu_table@.Data <- round(ps_round@otu_table@.Data) 
 
 # rename the copdcaco categories
-Final.ps.round@sam_data$copdcaco <- revalue(Final.ps.round@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blank'= 'blank'))
+ps_round@sam_data$copdcaco <- revalue(ps_round@sam_data$copdcaco, c('1' ='COPD', '0' = 'control', 'blank'= 'blank'))
 
 # Rarefaction curves on rounded data
 # Create rarefraction function (adapted from vegan `rarecurve` function)
@@ -425,10 +435,10 @@ ggrare <- function(physeq_object, step = 10, label = NULL, color = NULL, plot = 
 }
 
 # Compute minimum sequencing depth
-min_depth <- min(sample_sums(Final.ps.round)) # This is the minimum sample count achieved over all the samples. We will rarefy the sample counts to this value = 202
+min_depth <- min(sample_sums(ps_round)) # This is the minimum sample count achieved over all the samples. We will rarefy the sample counts to this value = 202
 
 # Now make rarefaction curves
-resistome_rare_curves <- ggrare(Final.ps.round, step = 1000, color = "copdcaco", se = FALSE) # step = 1000 specifies the interval at which rarefaction is calculated.
+resistome_rare_curves <- ggrare(ps_round, step = 1000, color = "copdcaco", se = FALSE) # step = 1000 specifies the interval at which rarefaction is calculated.
 # Add cut off line at minimum sequencing depth 
 rare_curves_color_copdcaco_split <- resistome_rare_curves + facet_wrap(~copdcaco)
 
@@ -436,7 +446,7 @@ rare_curves_color_copdcaco_split <- resistome_rare_curves + facet_wrap(~copdcaco
 ggsave("Output_files//Rarefaction_curves//Rarefaction_curves_colourperpopulation.png", plot = rare_curves_colorperpopulation, dpi = 300)
 rounded_FPKM
 ```
-## Top 10 most abundant ARG clusters
+# Top 10 most abundant ARG clusters
 ```{r}
 # Function to calculate top 10 taxa at different levels of taxonomic identification e.g. at ARG level, ARG cluster level, AMR class level etc. 
 toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
@@ -458,11 +468,11 @@ toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
 }
 
 # COPD and controls and blanks
-top10.ARGclusters.overall<- toptaxa (ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall<- toptaxa (ps_aggl_noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.overall
 
 # COPD and controls (no blanks)
-top10.ARGclusters.overall.noblanks<- toptaxa (ARGcluster.aggl.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall.noblanks<- toptaxa (ps_aggl_noblanks.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.overall.noblanks
 
 # Top 10 in copd samples 
@@ -479,7 +489,7 @@ top10.ARGclusters.blanks
 
 
 # Present as actual ARG cluster names 
-tt <- data.frame( tax_table( ARGcluster.aggl ) )
+tt <- data.frame( tax_table( ps_aggl_noblanks ) )
 # extract the names of the ARGCluster column where the row names of tt match the taxa present in the top10.ARGclusters.noblanks, top10.ARGclusters.COPD and top10.ARGclusters.control
 
 tt$ARGCluster[ row.names(tt) %in% top10.ARGclusters.overall.noblanks] 
@@ -518,14 +528,14 @@ bar.graphs2 <- function(physeq, var1 = "ungrouped", level, displayx = 10, filety
 } 
 
 # Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
-Final.ps.top10ARGClusters <- prune_taxa(top10.ARGclusters.overall.noblanks, ARGcluster.aggl)
+ps.top10ARGClusters <- prune_taxa(top10.ARGclusters.overall.noblanks, ps_aggl_noblanks)
 
 # Subset the phyloseq object to include only COPD and control samples
-Final.ps.top10ARGClusters_noblanks <- subset_samples(Final.ps.top10ARGClusters, copdcaco %in% c("1", "0"))
+ps.top10ARGClusters_noblanks <- subset_samples(ps.top10ARGClusters, copdcaco %in% c("1", "0"))
 
 # % of total taxa 
-total_sum <- sum(taxa_sums(ARGcluster.aggl.noblanks))
-top10_sum <- sum(taxa_sums(Final.ps.top10ARGClusters_noblanks))
+total_sum <- sum(taxa_sums(ps_aggl_noblanks.noblanks))
+top10_sum <- sum(taxa_sums(ps.top10ARGClusters_noblanks))
 
 # Calculate the percentage
 percentage_top10 <- (top10_sum / total_sum) * 100
@@ -533,34 +543,31 @@ cat("Percentage of the top 10 ARG clusters in the resistome:", round(percentage_
 
 # COPD participants
 total_sum_COPD <- sum(taxa_sums(COPD_ps))
-Final.ps.top10ARGClusters_noblanks_COPD <- subset_samples(Final.ps.top10ARGClusters_noblanks, copdcaco %in% "1")
-top10_sum_COPD <- sum(taxa_sums(Final.ps.top10ARGClusters_noblanks_COPD))
+ps.top10ARGClusters_noblanks_COPD <- subset_samples(ps.top10ARGClusters_noblanks, copdcaco %in% "1")
+top10_sum_COPD <- sum(taxa_sums(ps.top10ARGClusters_noblanks_COPD))
 # Calculate the percentage in COPD participants
 percentage_top10_COPD <- (top10_sum_COPD / total_sum_COPD) * 100
 cat("Percentage of the top 10 ARG clusters in the resistome of COPD participants:", round(percentage_top10_COPD, 2), "%\n") # 96.39 %
-
-
 
 # COPD participants
 total_sum_COPD <- sum(taxa_sums(COPD_ps))
-Final.ps.top10ARGClusters_noblanks_COPD <- subset_samples(Final.ps.top10ARGClusters_noblanks, copdcaco %in% "1")
-top10_sum_COPD <- sum(taxa_sums(Final.ps.top10ARGClusters_noblanks_COPD))
+ps.top10ARGClusters_noblanks_COPD <- subset_samples(ps.top10ARGClusters_noblanks, copdcaco %in% "1")
+top10_sum_COPD <- sum(taxa_sums(ps.top10ARGClusters_noblanks_COPD))
 # Calculate the percentage in COPD participants
 percentage_top10_COPD <- (top10_sum_COPD / total_sum_COPD) * 100
 cat("Percentage of the top 10 ARG clusters in the resistome of COPD participants:", round(percentage_top10_COPD, 2), "%\n") # 96.39 %
 
-
 # Control participants
 total_sum_control <- sum(taxa_sums(control_ps))
-Final.ps.top10ARGClusters_noblanks_control <- subset_samples(Final.ps.top10ARGClusters_noblanks, copdcaco %in% "0")
-top10_sum_control <- sum(taxa_sums(Final.ps.top10ARGClusters_noblanks_control))
+ps.top10ARGClusters_noblanks_control <- subset_samples(ps.top10ARGClusters_noblanks, copdcaco %in% "0")
+top10_sum_control <- sum(taxa_sums(ps.top10ARGClusters_noblanks_control))
 # Calculate the percentage in control participants
 percentage_top10_control <- (top10_sum_control / total_sum_control) * 100
 cat("Percentage of the top 10 ARG clusters in the resistome of control participants:", round(percentage_top10_control, 2), "%\n") # 99.24 %
 
 # # % of top10 taxa in the total ARGs in COPD individuals
 # # sum of counts for all taxa within COPD samples
-# total_sum_copd <- sum(taxa_sums(subset_taxa(ARGcluster.aggl_subset, ARGcluster.aggl_subset@sam_data$copdcaco == "COPD")))
+# total_sum_copd <- sum(taxa_sums(subset_taxa(ps_aggl_noblanks_subset, ps_aggl_noblanks_subset@sam_data$copdcaco == "COPD")))
 # top10_sum_copd <- sum(taxa_sums(subset_taxa(ARGcluster.top10, ARGcluster.top10@sam_data$copdcaco == "COPD")))
 # # Calculate the percentage
 # percentage_top10_copd <- (top10_sum_copd / total_sum_copd) * 100
@@ -599,14 +606,12 @@ core_ARGs_control <- core_members(control_ps_rel, detection = 1.4781e-06, preval
 core_ARGs_blank <- core_members(blank_ps_rel, detection = 1.4781e-06, prevalence = 90/100)
 
 # Convert ARG names to ARG cluster names
-tt <- data.frame( tax_table( ARGcluster.aggl ) )
+tt <- data.frame( tax_table( ps_aggl_noblanks ) )
 tt$ARGCluster[ row.names(tt) %in% core_ARGs_COPD] 
 tt$ARGCluster[ row.names(tt) %in% core_ARGs_control]
 tt$ARGCluster[ row.names(tt) %in% core_ARGs_blank]
 
 # Create Venn diagram with core resistome
-library(ggvenn)
-library(RColorBrewer)
 COPD <- c("cfxA_clust","mef(A)_clust", "msr(D)","tet(32)","tet(M)","tet(O)", "tet(Q)", "tet(W)")
 Controls <- c("cfxA_clust","mef(A)_clust", "msr(D)","tet(32)","tet(M)","tet(O)", "tet(Q)", "tet(W)")
 Blanks <- c("tet(A)","tet(C)")
