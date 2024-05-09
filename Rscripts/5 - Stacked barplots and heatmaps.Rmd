@@ -645,5 +645,380 @@ ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patch
 ```
 
 
+# Manuscript plots
+# Compute top10 taxa
+```{r}
+top10<- toptaxa(Final.ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10
+```
+# Figure 2 for manuscript
+```{r}
+#' A convenience wrapper to generate tuned barplots at various taxonomic levels using phyloseq input
+#'
+#' @param ps phyloseq object
+#' @param taxrank taxonomic rank to show (default "Phylum")
+#' @param top top-x to show (default top=10)
+#' @param sort.stack whether or not to sort the actual stacking on overall abundance (default sort.stack=TRUE)
+#' @param x what to show on x-axis (default x="Sample")
+#' @param y what to show on y-axis (default y="Abundance")
+#' @param group metadata grouping variable to "merge_samples" phyloseq function
+#' @param group_fun default "mean". phyloseq merge_samples will SUM otu_table by default. Here we corrected for the Nsamples per group -> actual MEAN. All other values will result in default behaviour.
+#' @param logy transform Abundance y-scale to log10 (default FALSE)
+#' @param facet_grid we want to facet the stacked bars (default facet_grid=NULL, example facet_grid="Kingdom")
+#' @param NArm whether or not to remove NAs in the data while agglomerating at given taxonomic rank (default NArm=FALSE)
+#' @param legend.col How many columns the legend may contain (default legend.col=1)
+#' @param xlab.rel Tweaked size of x-axis labels since readability depends on N samples (default xlab.rel=0.5)
+#' @param title Any custom to plot on the figure (default generates "Barplot <taxrank> - top<x> taxa")
+#' @param title.center center the title on figure otherwise left adjusted (default=TRUE)
+#'
+#' @returns ggplot figure
+#'
+#' @author Alex Bossers \email{a.bossers@uu.nl}
+#' #' Code modified by Beatrice Cornu Hewitt on 19th March 0
+#'
+#' @import RColorBrewer
+#' @import pals
+#' @import tax_glom2
+#' @import toptaxa
+#'  
+#' Updates:
+#'          2022-07-01 alx added taxglom options to allow visible subtaxonomic ranks per bar.
+#'          2022-05-15 alx added grouping and MEAN grouping options
+#'          2021-xx-xx alx many small tweaks. See git history.
+#'          2020-03-02 Alx split bucket into functions
+#'          2020-01-01 Alx initial checkin
+#' 
 
 
+# FixMe: sorting abundance of stacks when not using taxglom showing subtaxonomic ranks. Sorting is different.
+
+
+ps_plot_bar <- function( ps, 
+                         taxrank="Phylum", top=10, taxglom=TRUE, taxglom.next="",
+                         sort.stack=TRUE, 
+                         x="Sample", y="Abundance", group="", group_fun="mean",
+                         logy=FALSE, 
+                         facet_grid=NULL, NArm=FALSE, 
+                         xlab.rel = 0.5, 
+                         legend=TRUE, legend.col=1, legend.size=8,
+                         title=paste0("Barplot ", taxrank, " - ", if(top>0){paste0("Top",top)}else{"all taxa"} ), title.center=TRUE,
+                         colpalette=NULL  # argument for specifying color palette
+                       ) {
+  
+  require(RColorBrewer)
+  require(pals)
+  require(dplyr)
+  require(phyloseq)
+
+  # other custom functions from my toolbox
+  #source("tax_glom2.R")
+  #source("toptaxa.R")
+
+  # first drop zero samplesum samples (throws error otherwise)
+  zerosamples <- sum( sample_sums(ps) == 0 )
+  if( zerosamples > 0 ) {
+    warning( paste0( "Samples with zero sample_sums detected (N=", zerosamples, "). These are removed before plotting!\n" ) )
+    # note subset_samples doesn't work in user functions! See Rplayground for working example demonstrating this.
+    ps <- prune_samples( sample_sums(ps) > 0, ps )  
+   }
+  
+  # Group samples if grouping variable given
+  if(group > "") {
+    
+    # first prevent NAs in metadata variable
+    if( sum( is.na( sample_data(ps)[,group] ) ) > 0 ) {
+      stop("Metadata variable column contains NAs which may cause strange results. Aborting!")
+    }
+    ps.tmp <- merge_samples( ps, group=group )
+    if( group_fun == "mean" ) {
+      # otu table goes default to SUM for otu table. I want to show actual MEAN so correct for sample numbers
+      snumbers <- sample_data(ps) %>% group_by_at( group ) %>% count()
+      #double check if sample order is the same as metadata count order.
+      ps.o <- otu_table(ps.tmp)
+      if( ! all(snumbers[,1] == row.names(ps.o) ) )  {
+        stop("Internal error occurred. Sample name orders doesn't seem to match order of samples_count per group somehow... Turn off group_fun='mean'.")
+      } else {
+        ps.o <- ps.o / snumbers$n
+        otu_table(ps.tmp) <- ps.o
+      }
+    } else if( group_fun == "median" ) {
+      # otu table goes default to SUM for otu table. I want to show actual MEAN so correct for sample numbers
+      snumbers <- sample_data(ps) %>% group_by_at( group ) %>% count()
+      stop("Median function not implemented yet!")
+    } else {
+      warning("Grouping function defaulting to SUM!")
+    }
+    ps <- ps.tmp
+  }
+  
+  #glom at correct taxon level
+  if(!taxglom) { 
+      #keep in case taxglom=FALSE
+      ps.org <- ps 
+    } else { 
+      ps.org <- ps 
+      ps <- tax_glom2( ps, taxrank=taxrank, NArm=NArm )
+    }
+  
+  if(top>0) {
+    # make first top x at taxrank
+    topx <- toptaxa( ps, rank=taxrank, top=top )
+    ps <- prune_taxa( topx, ps)
+  }
+  
+  if(!taxglom) {
+    # get taxa list op taxrank level to extract later if taxglom = FALSE. 
+    # Using taxa as is would return only a subset of representative ASVs so we need to select taxa names at higher level first to know exact ASVs.
+    taxtab <- data.frame(tax_table(ps))
+    taxtop <- taxtab[topx,]
+    topPerRank <- taxtop[,taxrank] #taxa at i.e. Family level
+    
+    #Now we determine whether we want to taxglom deeper level or not
+    #Else we leave data at ASV level.
+    ps.org2 <- prune_taxa( data.frame(tax_table(ps.org))[,taxrank] %in% topPerRank, ps.org )#subset_taxa( ps.org, eval(as.name(taxrank)) %in% topPerRank)
+    if(taxglom.next != "") {
+      ps.org2 <- tax_glom2( ps.org2, taxrank=taxglom.next )
+    }
+      ps <- ps.org2
+  }
+  
+  p <- plot_bar( ps, x=x, y=y, fill=taxrank, title=title, facet_grid=facet_grid )
+
+  # sort stacked bars
+  if(sort.stack!="FALSE") {
+    if(sort.stack=="reverse") {
+      warning("reverse sort")
+      p.sort <- p$data %>% group_by( eval(as.name(taxrank)) ) %>% summarise( Avg=mean(Abundance)) %>% arrange( desc(Avg) )
+    } else {
+      p.sort <- p$data %>% group_by( eval(as.name(taxrank)) ) %>% summarise( Avg=mean(Abundance)) %>% arrange( Avg )
+    }
+      colnames(p.sort) <- c(taxrank,"Avg")
+      p.sort
+      p$data[taxrank] <- factor( p$data[[taxrank]], levels=p.sort[[taxrank]] )
+  }
+  
+  # Use the specified color palette if provided
+  if (!is.null(colpalette)) {
+    p <- p + scale_fill_manual(values = colpalette )
+  }
+  
+  p <- p + theme( text = element_text(size=10),
+           axis.text.y = element_text( size=8 ) , 
+           axis.text.x = element_text( angle=270, vjust=0.1, hjust=0, size=8 ),
+           legend.title = element_text( size=legend.size, face="bold"),
+           legend.text = element_text( size=legend.size )) +
+    scale_y_continuous(expand = c(0, 0))
+  
+  if(legend.col) {
+    p <- p + guides( fill=guide_legend(ncol=legend.col) )
+  }
+  
+  if( ! legend ){
+    p <- p + guides( fill="none" )
+  }
+  
+  if(!taxglom) {
+    #add subtitle when different taxglom is used
+    if(taxglom.next == ""){
+      sub <- paste0("(ASV-level taxa stacked per ",taxrank,"-taxonomic rank)")
+    } else {
+      sub <- paste0("(",taxglom.next,"-level taxa stacked per ",taxrank,"-taxonomic rank)")
+    }
+    p <- p + labs( subtitle=sub )
+  }
+  
+  if(title.center) {
+    p <- p + theme( plot.title = element_text( hjust = 0.5 ),
+                    plot.subtitle = element_text( hjust = 0.5 ))
+  }
+  
+  p <- p + theme( axis.text.x = element_text( size=rel(xlab.rel) ) )
+  
+  # if logy then transform y axis and label
+  if(logy){
+    p <- p + scale_y_continuous(trans='log10') + ylab("Log10(Abundance)")
+  }
+
+  return(p)
+}
+
+
+# Create colour scheme for plots
+display.brewer.all(colorblindFriendly = TRUE)
+colpalette1 <- rev(brewer.pal(10, "Paired"))
+colpalette2 <- rev(brewer.pal(8, "Set2"))
+```
+# Absolute abundance plots
+```{r}
+# ARG cluster level (top 10)
+barplot_abs_ARGcluster <- ps_plot_bar( Final.ps.noblanks, 
+                        taxrank="ARGCluster", 
+                        top=10, 
+                        taxglom=TRUE, 
+                        taxglom.next="",
+                        sort.stack="reverse", 
+                        x="Sample", 
+                        y="Abundance", 
+                        group="copdcaco", 
+                        group_fun="mean",
+                        logy=FALSE, 
+                        facet_grid=NULL, 
+                        NArm=FALSE, 
+                        xlab.rel = 0.5,   
+                        legend=TRUE, 
+                        legend.col=1, 
+                        legend.size=8,
+                        colpalette = colpalette1, 
+                        title = NULL)+
+  scale_x_discrete(labels = c("0" = "Control", "1" = "COPD"))+
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5, size = 16),
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        plot.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 16))+
+  ylab("Abundance (FPKM) (of top 10 clusters)") + 
+  labs(fill = "Top 10 ARG clusters")  # Set legend title manually
+
+              
+# AMR class level
+barplot_abs_AMRclass <- ps_plot_bar( Final.ps.noblanks, 
+                        taxrank="ARG_class", 
+                        top=10, 
+                        taxglom=TRUE, 
+                        taxglom.next="",
+                        sort.stack="reverse", 
+                        x="Sample", 
+                        y="Abundance", 
+                        group="copdcaco", 
+                        group_fun="mean",
+                        logy=FALSE, 
+                        facet_grid=NULL, 
+                        NArm=FALSE, 
+                        xlab.rel = 0.5,   
+                        legend=TRUE, 
+                        legend.col=1, 
+                        legend.size=8, 
+                        colpalette = colpalette2, 
+                        title = NULL)+
+  scale_x_discrete(labels = c("0" = "Control", "1" = "COPD"))+
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5, size = 16),
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        plot.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 16))+
+  ylab("Abundance (FPKM)")+
+    labs(fill = "AMR class") 
+
+# Save plots
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/barplot_abs_ARGcluster.svg", plot = barplot_abs_ARGcluster)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/barplot_abs_AMRclass.svg", plot = barplot_abs_AMRclass)
+
+# Combine plots for supplement figure
+abs_barplots <- (barplot_abs_ARGcluster|barplot_abs_AMRclass)
+patched_abs <- abs_barplots + plot_annotation(tag_levels = 'a')
+
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/patched_abs.svg", width = 14, height = 6, plot = patched_abs)
+```
+# Relative abundance 
+```{r}
+# Convert to relative abundances
+Final.ps.noblanks_rel <- transform_sample_counts(Final.ps.noblanks, function(x) x / sum(x) * 100)
+
+# Define breaks and labels for the y-axis
+y_breaks <- c(25, 50, 75, 100)
+y_labels <- paste0(y_breaks, "%")
+# Apply cowplot theme
+theme_set(theme_cowplot())
+
+# ARG cluster level (top10)
+barplot_RA_ARGcluster <- ps_plot_bar(Final.ps.noblanks_rel, 
+                                     taxrank="ARGCluster", 
+                                     top=10, 
+                                     taxglom=TRUE, 
+                                     taxglom.next="",
+                                     x="Sample", 
+                                     y="Abundance", 
+                                     group="copdcaco", 
+                                     group_fun = "mean",
+                                     logy=FALSE, 
+                                     facet_grid=NULL, 
+                                     NArm=FALSE, 
+                                     xlab.rel = 0.5,   
+                                     legend=TRUE, 
+                                     legend.col=1, 
+                                     legend.size=8,
+                                     colpalette = colpalette1, 
+                                     title = NULL) + 
+  scale_x_discrete(labels = c("0" = "Control", "1" = "COPD")) +
+  scale_y_continuous(breaks = y_breaks, labels = y_labels) +  # Set breaks and labels for y-axis
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5, size = 16),
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        plot.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 16)) +
+  ylab("% of top 10 ARG clusters present")+
+  labs(fill = "Top 10 ARG clusters")  # Set legend title manually
+  
+# AMR class level
+barplot_RA_ARGclass <- ps_plot_bar(Final.ps.noblanks.rel, 
+                                   taxrank="ARG_class", 
+                                   top=10, 
+                                   taxglom=TRUE, 
+                                   taxglom.next="",
+                                   x="Sample", 
+                                   y="Abundance", 
+                                   group="copdcaco", 
+                                   group_fun="mean",
+                                   logy=FALSE, 
+                                   facet_grid=NULL, 
+                                   NArm=FALSE, 
+                                   xlab.rel = 0.5,   
+                                   legend=TRUE, 
+                                   legend.col=1, 
+                                   legend.size=8,
+                                   colpalette = colpalette2,
+                                   title = NULL) + 
+  scale_x_discrete(labels = c("0" = "Control", "1" = "COPD")) +
+  scale_y_continuous(breaks = y_breaks, labels = y_labels) +  # Set breaks and labels for y-axis
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 0.5, size = 16),
+        axis.text.y = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        plot.title = element_text(size = 16),
+        plot.subtitle = element_text(size = 16)) +
+  ylab("% of total ARGs present")+
+  labs(fill = "AMR class")  # Set legend title manually
+
+# Save plots
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/barplot_RA_ARGcluster.svg", plot = barplot_RA_ARGcluster, width = 8, height= 6)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/barplot_RA_ARGclass.svg", plot = barplot_RA_ARGclass, width = 8, height= 6)
+
+# Patchwork for manuscript figure
+# Combine the plots
+RA_barplots <- (barplot_RA_ARGclass | barplot_RA_ARGcluster)
+RA_barplots <- RA_barplots+ plot_annotation(tag_levels = 'a') & 
+  theme(plot.tag = element_text(size = 16))
+
+# Save the patched figure
+ggsave(
+  filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patched.svg", 
+  width = 14, 
+  height = 6, 
+  plot = RA_barplots
+)
+
+
+
+
+
+
+
+
+```
