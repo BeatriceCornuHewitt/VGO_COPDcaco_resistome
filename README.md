@@ -11,7 +11,6 @@ The scripts in this repository are related to a COPD case-control study conducte
 
 ## Scripts
 All scripts are saved as Rmarkdown files in the folder 'Rscripts' within this repository. Scripts are separated into the following sections:
-*  [`1 - Load libraries.Rmd`]: Load required libraries for entire project
 *  [`1 - Load data and create phyloseq.Rmd`]: Load data for whole project and create phyloseq objects ready for analysis
 *  [`2 - Identify contaminants.Rmd`]: Script to identify contaminants using decontam combined method
 *  [`3 - Resistome basics.Rmd`]: Basic analysis of the resistome including abundance analysis, bacterial load analysis
