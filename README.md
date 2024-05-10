@@ -12,14 +12,16 @@ The scripts in this repository are related to a COPD case-control study conducte
 ## Scripts
 All scripts are saved as Rmarkdown files in the folder 'Rscripts' within this repository. Scripts are separated into the following sections:
 *  [`1 - Load libraries.Rmd`]: Load required libraries for entire project
-*  [`2 - Load data and create phyloseq.Rmd`]: Load data for whole project and create phyloseq objects ready for analysis
-*  [`3 - Identify contaminants.Rmd`]: Script to identify contaminants using decontam combined method
-*  [`4 - Resistome basics.Rmd`]: Basic analysis of the resistome including abundance analysis, bacterial load analysis
-*  [`5 - Visualisations.Rmd`]): Visualisations of the resistome including stacked bar charts and heatmaps on different taxonomic levels
-*  [`6 - Alpha diversity.Rmd`]: Alpha diversity analyses in relation to COPD status and livestock exposure status
-*  [`7 - Beta diversity.Rmd`]: Community composition analyses in relation to COPD status and livestock exposure status
-*  [`8 - Differential abundance analysis.Rmd`]: Differential abundance analysis of resistance genes in relation to COPD status and livestock exposure status using DESeq and ALDEx algorithms
-*  [`9 - Bacteriome and resistome.Rmd`]: Comparison of the composition of the bacteriome and the resistome using Procrustes analysis and co-occurrence networks
+*  [`1 - Load data and create phyloseq.Rmd`]: Load data for whole project and create phyloseq objects ready for analysis
+*  [`2 - Identify contaminants.Rmd`]: Script to identify contaminants using decontam combined method
+*  [`3 - Resistome basics.Rmd`]: Basic analysis of the resistome including abundance analysis, bacterial load analysis
+*  [`4 - Visualisations.Rmd`]): Visualisations of the resistome including stacked bar charts and heatmaps on different taxonomic levels
+*  [`5 - Alpha diversity.Rmd`]: Alpha diversity analyses in relation to COPD status and livestock exposure status
+*  [`6 - Beta diversity.Rmd`]: Community composition analyses in relation to COPD status and livestock exposure status
+*  [`7 - Differential abundance analysis.Rmd`]: Differential abundance analysis of resistance genes in relation to COPD status and livestock exposure status using DESeq and ALDEx algorithms
+*  [`8 - Bacteriome and resistome.Rmd`]: Comparison of the composition of the bacteriome and the resistome using Procrustes analysis and co-occurrence networks
+*  [`9 - Manuscript Figure 3.Rmd`]: Script to create figure 3 in manuscript
+
 
 ## Session Info 
 ```
