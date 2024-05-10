@@ -1,5 +1,5 @@
 ---
-title: "Stacked bar plots and heatmaps"
+title: "4 - Stacked bar plots and heatmaps"
 author: "b.cornuhewitt@uu.nl"
 ---
 # Packages

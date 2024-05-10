@@ -1,0 +1,1228 @@
+---
+title: "6 - Beta diversity"
+author: "b.cornuhewitt@uu.nl"
+---
+# Libraries
+```{r}
+library(vegan)
+```
+
+# COPD vs control
+## PERMANOVA and betadisper
+```{r}
+# Extract abundance matrix from phyloseq object
+otu_df <- data.frame(ps_aggl_noblanks@otu_table)
+# Calculate BC distances between all sample types
+BC <- vegdist(otu_df, method =  "bray")
+# Add column to dataframe to include Copdcaco status
+otu_df$copdcaco <- ps_aggl_noblanks@sam_data$copdcaco
+
+# Check group dispersions using betadisper 
+Betadisper <- betadisper(BC, otu_df$copdcaco)
+# Anova on the group dispersions.
+Betadisper.anova <- anova(Betadisper) # group dispersions (distances from centroids) are very similar
+Betadisper.anova$`Pr(>F)` # p-value = 0.6355283
+plot(Betadisper)
+
+# PERMANOVA
+set.seed(123)
+permanova_copdcaco <- adonis2(BC ~ otu_df$copdcaco, permutations = 9999)
+permanova_copdcaco # R2 = 0.02013, p-value = 0.1922 - no significant compositional differences between COPD case and control
+pval_permanova_copdcaco <- permanova_copdcaco$`Pr(>F)`[1] 
+pval_permanova_copdcaco_round <- round(pval_permanova_copdcaco, digits = 3) # p-value = 0.192
+```
+# PCoA ordinations
+```{r}
+ps_aggl_noblanks@sam_data$copdcaco <- revalue(ps_aggl_noblanks@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
+# PCoA 
+ordination <- ordinate(ps_aggl_noblanks, method="PCoA", distance="bray")
+
+# Access the eigenvalues from the ordination object
+eigenvalues <- ordination$values
+# Calculate the proportion of variance explained by the first 2 PCoA axes
+var_explained <- eigenvalues$Eigenvalues[1:2] / sum(eigenvalues$Eigenvalues)
+var_explained # Axis 1 = 0.2849242 , Axis 2 = 0.1722990
+
+theme_set(theme_cowplot())
+PCoA <- plot_ordination(ps_aggl_noblanks, ordination, color = "copdcaco", shape = "copdcaco") +
+  ggtitle("Bray-Curtis PCoA - COPD vs control") +
+  labs(legend = "COPD/control status") +
+  geom_point(aes(color = copdcaco), size = 4) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  theme(
+    plot.title = element_text(size = 12),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10)
+  ) +
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = copdcaco, color = copdcaco)) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(x = 0.42, y = -0.47, label = paste("R2 = 2%, p-value = 0.19"), size = 4, color = "black", family = "Arial") +
+  xlab("PCo1 (28.5%) ") +
+  ylab("PCo2 (17.2%)") +
+  coord_fixed(ratio = 1) +
+  guides(color = guide_legend(title = "Study population"),
+         shape = guide_legend(title = "Study population"),
+         fill = guide_legend(title = "Study population"))
+PCoA
+ggsave("..//Output_files//PCoAs//PCoA.svg", PCoA, width = 8, height = 6, dpi = 3000)
+```
+
+# Livestock exposure
+```{r}
+ps_aggl_noblanks_quant <- ps_aggl_noblanks
+# Extract the subset of columns from sam_data
+sam_data_df <- data.frame(ps_aggl_noblanks_quant@sam_data)
+
+# Define the list of 30 columns to extract for beta analysis
+exposure_col_names <- c(
+  "MinDistAnyFarm.NEG", "MinDistAnyFarm.INV", "AllFarm.3000m", 
+  "AllFarm.1000m", "AllFarm.500m", "AllFarm.250m",
+  "npigsWghtDist.1000m.sum", "npoultryWghtDist.1000m.sum",
+  "ncowsWghtDist.1000m.sum", "nhorsesWghtDist.1000m.sum",
+  "ngoatsWghtDist.1000m.sum", "nsheepWghtDist.1000m.sum",
+  "npigsWghtDist.3000m.sum", "npoultryWghtDist.3000m.sum",
+  "ncowsWghtDist.3000m.sum", "nhorsesWghtDist.3000m.sum",
+  "ngoatsWghtDist.3000m.sum", "nsheepWghtDist.3000m.sum",
+  "nAnyFarmWghtDist.1000m.sum", "nAnyFarmWghtDist.3000m.sum",
+  "DISP_EUinPM10_AnnualAv_WP99.5", "DISP_PM10CONC_AnnualAv_WP99.5",
+  "E.coli_LUR_estimates", "Staph_LUR_estimates", "tetW_LUR_estimates",
+  "mecA_LUR_estimates", "E.coli_RF_predictions", "Staph_RF_predictions",
+  "tetW_RF_predictions", "mecA_RF_predictions"
+)
+
+# Extract the desired columns
+exposure_cols <- sam_data_df[, exposure_col_names]
+head(exposure_cols)
+str(exposure_cols)
+# convert all to numeric
+for (col in colnames(exposure_cols)) {
+  exposure_cols[[col]] <- as.numeric(exposure_cols[[col]])
+}
+
+exposure_cols_quant <- exposure_cols
+# Function to split into quantiles or halves based on zero values
+split_into_quantiles_or_halves <- function(x, col_name) {
+  # Check if more than a quarter of the values are zeros
+  if (sum(x == 0) > length(x) / 4) {
+    # Split into halves
+    breaks <- 2
+    quantile_labels <- c("Low", "High")
+  } else {
+    # Split into quantiles
+    breaks <- 4
+    quantile_labels <- paste0(1:breaks, " quantile (", col_name, ")")
+  }
+  # Perform quantcut or cut
+  return(if (breaks == 2) cut(x, breaks = breaks, labels = quantile_labels)
+         else quantcut(x, q = breaks, labels = quantile_labels))
+}
+
+# Loop through each column
+for (col in colnames(exposure_cols_quant)) {
+  # Apply split_into_quantiles_or_halves function to each column
+  exposure_cols_quant[[col]] <- split_into_quantiles_or_halves(exposure_cols_quant[[col]], col)
+}
+
+# Check the result
+head(exposure_cols_quant)
+
+# The following variables could not be split into quantiles (too many zeros), therefore split into halves: 
+# AllFarm.500m
+# AllFarm.250m
+# npigsWghtDist.1000m.sum
+# npoultryWghtDist.1000m.sum
+# ngoatsWghtDist.1000m.sum
+# nsheepWghtDist.1000m.sum
+```
+# Preparing data
+```{r}
+# Extract abundance matrix from phyloseq object
+otu_df <- data.frame(ps_aggl_noblanks@otu_table)
+# Calculate BC distances between all sample types
+BC <- vegdist(otu_df, method =  "bray")
+# Add livestock informations as columns to the otu_df
+otu_df$ID <- rownames(otu_df)
+exposure_cols_quant$ID <- rownames(exposure_cols_quant)
+# Merge the two data frames by the 'ID' column
+otu_df_exp <- merge(otu_df, exposure_cols_quant, by = 'ID', all.x = TRUE, suffixes = c("", ""))
+otu_df_exp$copdcaco <- ps_aggl_noblanks@sam_data$copdcaco
+```
+# PERMANOVA
+```{r}
+# List to store adonis results
+adonis_results <- list()
+
+# Loop through each variable in exposure_col_names
+for (col in exposure_col_names) {
+  # Set seed before each adonis call
+  set.seed(123)
+  # Create the formula dynamically
+  formula <- as.formula(paste("BC ~ otu_df_exp$", col))
+  # Run adonis
+  adonis_result <- adonis2(formula, data = otu_df_exp, permutations = 9999)
+  # Store the result in the list
+  adonis_results[[col]] <- adonis_result
+}
+
+# Check the results
+adonis_results
+
+# Create an empty data frame to store results
+results_df <- data.frame(
+  Variable = character(),
+  R2 = numeric(),
+  P_value = numeric(),
+  stringsAsFactors = FALSE
+)
+# Loop through each variable in exposure_col_names
+for (col in exposure_col_names) {
+  # Extract ANOVA result from adonis_results list
+  anova_result <- adonis_results[[col]]
+  # Check if ANOVA result is not NULL
+  if (!is.null(anova_result)) {
+    # Extract R-squared and p-value
+    R2 <- anova_result$R2[1]
+    P_value <- anova_result$"Pr(>F)"[1] # Assuming p-value is in the first element
+    # Check if the variable already exists in the results dataframe
+    if (!(col %in% results_df$Variable)) {
+      # Store the results in the data frame
+      results_df <- rbind(results_df, data.frame(Variable = col, R2 = R2, P_value = P_value))
+    }
+  } else {
+    print(paste("No ANOVA result for", col))
+  }
+}
+
+# Adjust p-values using Benjamini-Hochberg correction
+results_df$p_adj <- p.adjust(results_df$P_value, method = "BH")
+# View the results data frame
+results_df
+
+# Change variable names for supplement table
+map_names <- function(old_name) {
+  new_name <- switch(old_name,
+                     "MinDistAnyFarm.NEG" = "Distance to nearest farm (any) (-1*m)",
+  "MinDistAnyFarm.INV" = "Distance to nearest farm (any) (m-1)",
+  "AllFarm.3000m" = "Number of farms (all) in a 3000m buffer",
+  "AllFarm.1000m" = "Number of farms (all) in a 1000m buffer",
+  "AllFarm.500m" = "Number of farms (all) in a 500m buffer",
+  "AllFarm.250m" = "Number of farms (all) in a 250m buffer",
+  "npigsWghtDist.1000m.sum" = "Number of pigs weighted to distance in a 1000m buffer (Σ(N/m))",
+  "npoultryWghtDist.1000m.sum" = "Number of poultry weighted to distance in a 1000m buffer (Σ(N/m))",
+  "ncowsWghtDist.1000m.sum" = "Number of cows weighted to distance in a 1000m buffer (Σ(N/m))",
+  "nhorsesWghtDist.1000m.sum" = "Number of horses weighted to distance in a 1000m buffer (Σ(N/m))",
+  "ngoatsWghtDist.1000m.sum" = "Number of goats weighted to distance in a 1000m buffer (Σ(N/m))",
+  "nsheepWghtDist.1000m.sum" = "Number of sheep weighted to distance in a 1000m buffer (Σ(N/m))",
+  "npigsWghtDist.3000m.sum" = "Number of pigs weighted to distance in a 3000m buffer (Σ(N/m))",
+  "npoultryWghtDist.3000m.sum" = "Number of poultry weighted to distance in a 3000m buffer (Σ(N/m))",
+  "ncowsWghtDist.3000m.sum" = "Number of cows weighted to distance in a 3000m buffer (Σ(N/m))",
+  "nhorsesWghtDist.3000m.sum" = "Number of horses weighted to distance in a 3000m buffer (Σ(N/m))",
+  "ngoatsWghtDist.3000m.sum" = "Number of goats weighted to distance in a 3000m buffer (Σ(N/m))",
+  "nsheepWghtDist.3000m.sum" = "Number of sheep weighted to distance in a 3000m buffer (Σ(N/m))",
+  "nAnyFarmWghtDist.1000m.sum" = "Number of farms (all) weighted to distance in a 1000m buffer (Σ(N/m))",
+  "nAnyFarmWghtDist.3000m.sum" = "Number of farms (all) weighted to distance in a 3000m buffer (Σ(N/m))",
+  "DISP_EUinPM10_AnnualAv_WP99.5" = "Dispersion-modelled endotoxin concentration (endotoxin units (EU)/m3)",
+  "DISP_PM10CONC_AnnualAv_WP99.5" = "Dispersion-modelled PM10 concentration (μg/m3)",
+  "E.coli_LUR_estimates" = "LUR-modelled E. coli (copies/m3)",
+  "Staph_LUR_estimates" = "LUR-modelled Staphylococcus spp. (copies/m3)",
+  "tetW_LUR_estimates" = "LUR-modelled tetW (copies/m3)",
+  "mecA_LUR_estimates" = "LUR-modelled mecA (copies/m3)",
+  "E.coli_RF_predictions" = "RF-modelled E. coli (copies/m3)",
+  "Staph_RF_predictions" = "RF-modelled Staphylococcus spp. (copies/m3)",
+  "tetW_RF_predictions" = "RF-modelled tetW (copies/m3)",
+  "mecA_RF_predictions" = "RF-modelled mecA (copies/m3)",
+                     old_name)
+  return(new_name)
+}
+
+results_df$Variable <- sapply(results_df$Variable, function(x) name_mapping[x])
+results_df
+write.csv(results_df,"..//Output_files//Beta_diversity//permanova_livestock_exposure_results.csv")
+```
+# Betadisper - to be continued
+```{r}
+
+```
+
+
+## PCoA ordinations - to be continued...
+```{r}
+ARGcluster.aggl.noblanks.exp <- ARGcluster.aggl.noblanks
+sample_data(ARGcluster.aggl.noblanks.exp)
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.noblanks.exp) <- sam.data.new
+names(ARGcluster.aggl.noblanks.exp@sam_data)
+
+# Firstly I need to categorise my exposure proxy variables which are currently continuous numeric to quantiles (factor variables) (as WvK did for his analysis too)- I want an equal % of variables in each quantile
+# I start with the livestock proxies which came out significant in the alpha diversity linear models 
+ARGcluster.aggl.noblanks.exp.quant <- ARGcluster.aggl.noblanks.exp
+# I will use the quantcut() function in gtools -quantcut(x, q = 4, na.rm = TRUE, ...)
+
+ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG, q=4, labels =c("1st quantile (minDistAnyFarm.NEG)", "2nd quantile (minDistAnyFarm.NEG)", "3rd quantile (minDistAnyFarm.NEG)", "4th quantile (minDistAnyFarm.NEG)"))
+# MinDistAnyFarm.INV
+ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV, q=4, labels =c("1st quantile (MinDistAnyFarm.INV)", "2nd quantile (MinDistAnyFarm.INV)", "3rd quantile (MinDistAnyFarm.INV)", "4th quantile (MinDistAnyFarm.INV)"))
+# AllFarm.3000m
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m, q=4, labels =c("1st quantile (AllFarm.3000m)", "2nd quantile (AllFarm.3000m)", "3rd quantile (AllFarm.3000m)", "4th quantile (AllFarm.3000m)"))
+#AllFarm.1000m
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m, q=4, labels =c("1st quantile (AllFarm.1000m)", "2nd quantile (AllFarm.1000m)", "3rd quantile (AllFarm.1000m)", "4th quantile (AllFarm.1000m)"))
+#AllFarm.500m - unable to split into quantiles due to lots of zeros - I have split in half instead
+ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m, q=2,labels =c("Bottom half (AllFarm.500m)", "Top half (AllFarm.500m)"))
+# #AllFarm.250m  -  difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe? Is this that explanatory though?
+# ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.250m<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.250m, q=2)
+#npigsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.1000m.sum, q=2, labels=c("Bottom half (npigsWghtDist.1000m.sum)", "Top half (npigsWghtDist.1000m.sum)"))
+#npoultryWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.1000m.sum, q=2, labels=c("Bottom half (npoultryWghtDist.1000m.sum)", "Top half (npoultryWghtDist.1000m.sum)"))
+#ncowsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.1000m.sum<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.1000m.sum, q=4, labels =c("1st quantile (ncowsWghtDist.1000m.sum)", "2nd quantile (ncowsWghtDist.1000m.sum)", "3rd quantile (ncowsWghtDist.1000m.sum)", "4th quantile (ncowsWghtDist.1000m.sum)"))
+#ngoatsWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum, q=2, labels=c("Bottom half (ngoatsWghtDist.1000m.sum)", "Top half (ngoatsWghtDist.1000m.sum)")) # unable to split ngoatsWghtDist.1000m.sum into half
+#nhorsesWghtDist.1000m.sum 
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.1000m.sum, q=4, labels =c("1st quantile (nhorsesWghtDist.1000m.sum)", "2nd quantile (nhorsesWghtDist.1000m.sum)", "3rd quantile (nhorsesWghtDist.1000m.sum)", "4th quantile (nhorsesWghtDist.1000m.sum)"))
+# ngoatsWghtDist.1000m.sum
+# Difficult to split as the majority are equal to zero…I could split into 0 vs not 0 maybe?
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum <- ifelse(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum == 0, "No goat farms in 1000m","1 or more goat farms within 1000m")
+# Split nsheepWghtDist.1000m.sum into quantiles
+# It is not possible to split this variable into quantiles (because more than one quantile obtains the same value - as there are so many zero values), therefore instead I can split into 2 - bottom and top halves
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum, q=2, labels =c("bottom half", "top half"))
+# npigsWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npigsWghtDist.3000m.sum, q=2, labels =c("Bottom half (npigsWghtDist.3000m.sum)", "Top half (npigsWghtDist.3000m.sum)"))
+#npoultryWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$npoultryWghtDist.3000m.sum, q=4, labels =c("1st quantile (npoultryWghtDist.3000m.sum)", "2nd quantile (npoultryWghtDist.3000m.sum)", "3rd quantile (npoultryWghtDist.3000m.sum)", "4th quantile (npoultryWghtDist.3000m.sum)"))
+#ncowsWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ncowsWghtDist.3000m.sum, q=4, labels =c("1st quantile (ncowsWghtDist.3000m.sum)", "2nd quantile (ncowsWghtDist.3000m.sum)", "3rd quantile (ncowsWghtDist.3000m.sum)", "4th quantile (ncowsWghtDist.3000m.sum)"))
+# Split nhorsesWghtDist.3000m.sum into quantiles
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.3000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nhorsesWghtDist.3000m.sum, q=4, labels =c("1st quantile (nhorsesWghtDist.3000m.sum)", "2nd quantile (nhorsesWghtDist.3000m.sum)", "3rd quantile (nhorsesWghtDist.3000m.sum)", "4th quantile(nhorsesWghtDist.3000m.sum)"))
+# Split ngoatsWghtDist.3000m.sum into quantiles
+ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum <- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.3000m.sum, q=4, labels =c("1st quantile (ngoatsWghtDist.3000m.sum)", "2nd quantile (ngoatsWghtDist.3000m.sum)", "3rd quantile (ngoatsWghtDist.3000m.sum)", "4th quantile(ngoatsWghtDist.3000m.sum)"))
+#nsheepWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.3000m.sum, q=4, labels =c("1st quantile (nsheepWghtDist.3000m.sum)", "2nd quantile (nsheepWghtDist.3000m.sum)", "3rd quantile (nsheepWghtDist.3000m.sum)", "4th quantile (nsheepWghtDist.3000m.sum)"))
+#nAnyFarmWghtDist.1000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.1000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.1000m.sum, q=4, labels =c("1st quantile (nAnyFarmWghtDist.1000m.sum)", "2nd quantile (nAnyFarmWghtDist.1000m.sum)", "3rd quantile (nAnyFarmWghtDist.1000m.sum)", "4th quantile (nAnyFarmWghtDist.1000m.sum)"))
+#nAnyFarmWghtDist.3000m.sum
+ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.3000m.sum<-quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$nAnyFarmWghtDist.3000m.sum, q=4, labels =c("1st quantile (nAnyFarmWghtDist.3000m.sum)", "2nd quantile (nAnyFarmWghtDist.3000m.sum)", "3rd quantile (nAnyFarmWghtDist.3000m.sum)", "4th  quantile (nAnyFarmWghtDist.3000m.sum) "))
+# DISP_EUinPM10_AnnualAv_WP99.5  
+ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=4, labels =c("1st quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "2nd quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "3rd quantile (DISP_EUinPM10_AnnualAv_WP99.5)", "4th quantile (DISP_EUinPM10_AnnualAv_WP99.5)"))
+# DISP_PM10CONC_AnnualAv_WP99.5 
+ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, q=4, labels =c("1st quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "2nd quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "3rd quantile (DISP_PM10CONC_AnnualAv_WP99.5)", "4th quantile (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+
+# Check a few variabes to ensure quantile/half splitting has been successful
+
+# check the quantile splitting of these other exposure proxies has been successful
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.NEG)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$MinDistAnyFarm.INV)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.3000m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.1000m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$AllFarm.500m)
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$ngoatsWghtDist.1000m.sum) # should be in half
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$nsheepWghtDist.1000m.sum)# should be in half
+barchart(ARGcluster.aggl.noblanks.exp.quant@sam_data$DISP_EUinPM10_AnnualAv_WP99.5)
+# Yes it appears that splitting of the exposure proxy variables has all been performed correctly 
+
+# PCoA on the BC dissimilarity matrix of the clustered resistome data (as before)
+ARGcluster.aggl.PCoA.exp.quant <- ordinate(ARGcluster.aggl.noblanks.exp.quant, method="PCoA", distance="bray")
+
+# Extract the vectors from the PCoA 
+ARGcluster.aggl.PCoA.exp.quant$vectors # i.e. this tells us how much of the total variance is explained by each of the axes with respect to the total variance
+
+# Show dominant eigen planes
+plot_scree(ARGcluster.aggl.PCoA.exp.quant)
+
+# Exploring all exposure variables in PCoAs 
+# MinDistAnyFarm.NEG
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.NEG.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="MinDistAnyFarm.NEG", shape="MinDistAnyFarm.NEG" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by MinDistAnyFarm.NEG quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.NEG.quant
+
+# MinDistAnyFarm.INV
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.INV.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="MinDistAnyFarm.INV", shape="MinDistAnyFarm.INV" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by MinDistAnyFarm.INV quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.MinDistAnyFarm.INV.quant
+
+# AllFarm.3000m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.3000m <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.3000m", shape="AllFarm.3000m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.3000m quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.3000m
+
+# AllFarm.1000m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.1000m.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.1000m", shape="AllFarm.1000m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.1000m quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.1000m.quant
+
+#AllFarm.500m
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.500m <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="AllFarm.500m", shape="AllFarm.500m" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by AllFarm.500m halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.Allfarm.500m
+
+#npigsWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.1000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npigsWghtDist.1000m.sum", shape="npigsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npigsWghtDist.1000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.1000m.sum.half
+
+# npoultryWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.1000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npoultryWghtDist.1000m.sum", shape="npoultryWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npoultryWghtDist.1000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.1000m.sum.half
+
+#ncowsWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.1000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ncowsWghtDist.1000m.sum", shape="ncowsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by ncowsWghtDist.1000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.1000m.sum
+
+#nhorsesWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nhorsesWghtDist.1000m.sum", shape="nhorsesWghtDist.1000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nhorsesWghtDist.1000m.sum quantiles") +
+  labs(legend="nhorsesWghtDist.1000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nhorsesWghtDist.1000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.1000m.sum.quant + stat_ellipse()
+
+# ngoatsWghtDist.1000m.sum.quant
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.1000m.sum.quant <- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ngoatsWghtDist.1000m.sum", shape="ngoatsWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by quantiles of ngoatsWghtDist.1000m.sum") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() +
+  theme(plot.title = element_text(size = 20, face = "bold"), legend.title=element_text(size=20), legend.text=element_text(size=15))
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.1000m.sum.quant
+
+# nsheepWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nsheepWghtDist.1000m.sum", shape="nsheepWghtDist.1000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nsheepWghtDist.1000m.sum quantiles") +
+  labs(legend="nsheepWghtDist.1000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nsheepWghtDist.1000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.1000m.sum.half + stat_ellipse()
+
+
+
+#npigsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.3000m.sum.half<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npigsWghtDist.3000m.sum", shape="npigsWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npigsWghtDist.3000m.sum halves") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npigsWghtDist.3000m.sum.half
+
+#npoultryWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.3000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="npoultryWghtDist.3000m.sum", shape="npoultryWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by npoultryWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.npoultryWghtDist.3000m.sum
+
+#ncowsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.3000m.sum.quant<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="ncowsWghtDist.3000m.sum", shape="ncowsWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by ncowsWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.ncowsWghtDist.3000m.sum.quant
+
+#nhorsesWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nhorsesWghtDist.3000m.sum", shape="nhorsesWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nhorsesWghtDist.3000m.sum quantiles") +
+  labs(legend="nhorsesWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nhorsesWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nhorsesWghtDist.3000m.sum.quant + stat_ellipse()
+
+#ngoatsWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "ngoatsWghtDist.3000m.sum", shape="ngoatsWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by ngoatsWghtDist.3000m.sum quantiles") +
+  labs(legend="ngoatsWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = ngoatsWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.ngoatsWghtDist.3000m.sum.quant + stat_ellipse()
+
+#nsheepWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.3000m.sum.quant<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="nsheepWghtDist.3000m.sum", shape="nsheepWghtDist.3000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by nsheepWghtDist.3000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.nsheepWghtDist.3000m.sum.quant
+
+#nAnyFarmWghtDist.1000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.1000m.sum<- plot_ordination(ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color="nAnyFarmWghtDist.1000m.sum", shape="nAnyFarmWghtDist.1000m.sum" ) +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - coloured by nAnyFarmWghtDist.1000m.sum quantiles") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp@sam_data),hjust=-0.3, vjust=-0.5 ) )+ stat_ellipse() 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.1000m.sum
+
+# nAnyFarmWghtDist.3000m.sum
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "nAnyFarmWghtDist.3000m.sum", shape="nAnyFarmWghtDist.3000m.sum") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by nAnyFarmWghtDist.3000m.sum quantiles") +
+  labs(legend="nAnyFarmWghtDist.3000m.sum exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = nAnyFarmWghtDist.3000m.sum))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.nAnyFarmWghtDist.3000m.sum + stat_ellipse()
+
+# Ordination on dispersion modelled endotoxin concentration DISP_EUinPM10_AnnualAv_WP99.5 quantiles 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "DISP_EUinPM10_AnnualAv_WP99.5", shape="DISP_EUinPM10_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by endotoxin exposure quantiles") +
+  labs(legend="Endotoxin exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_EUinPM10_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISP.endotoxin.quant + stat_ellipse()
+
+# Ordination on dispersion modelled PM10 concentration quantiles (DISP_PM10CONC_AnnualAv_WP99.5)
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant <- plot_ordination( ARGcluster.aggl.noblanks.exp.quant, ARGcluster.aggl.PCoA.exp.quant, color = "DISP_PM10CONC_AnnualAv_WP99.5", shape="DISP_PM10CONC_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by PM10 exposure quantiles") +
+  labs(legend="PM10 exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.quant@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_PM10CONC_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.quant + stat_ellipse()
+
+# For all of the ordinations it appears that there are no associations - i.e. lots of overlap of all ordinations
+
+# Now I will try an alternative splitting of the variables
+# Try splitting endotoxin exposure into high and low concentrations instead 
+# Split DISP_EUinPM10_AnnualAv_WP99.5 into high and low 
+ARGcluster.aggl.noblanks.exp.half <- ARGcluster.aggl.noblanks
+sample_data(ARGcluster.aggl.noblanks.exp.half)
+sam.data.new <- as.data.frame(sample_data(livestock.exp.df.noblanks.df))
+sample_data(ARGcluster.aggl.noblanks.exp.half) <- sam.data.new
+ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_EUinPM10_AnnualAv_WP99.5, q=2, labels =c("Low exposure (DISP_EUinPM10_AnnualAv_WP99.5)", "High exposure (DISP_EUinPM10_AnnualAv_WP99.5)"))
+
+# Run the ordination on this DISP_EUinPM10_AnnualAv_WP99.5 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.half, ARGcluster.aggl.PCoA.exp.half, color = "DISP_EUinPM10_AnnualAv_WP99.5", shape="DISP_EUinPM10_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by endotoxin exposure quantiles") +
+  labs(legend="Endotoxin exposure (high vs.low)")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.half@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_EUinPM10_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISP.ENDO.half + stat_ellipse()
+
+# Try splitting PM10 exposure into high and low concentrations instead
+ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5<- quantcut(ARGcluster.aggl.noblanks.exp.half@sam_data$DISP_PM10CONC_AnnualAv_WP99.5, breaks=2, labels =c("Low exposure (DISP_PM10CONC_AnnualAv_WP99.5)", "High exposure (DISP_PM10CONC_AnnualAv_WP99.5)"))
+
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half <- plot_ordination( ARGcluster.aggl.noblanks.exp.half, ARGcluster.aggl.PCoA.exp.half, color = "DISP_PM10CONC_AnnualAv_WP99.5", shape="DISP_PM10CONC_AnnualAv_WP99.5") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, \n90% identity clustered) - coloured by PM10 exposure quantiles") +
+  labs(legend="PM10 exposure (high vs.low)")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.exp.half@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 15))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = DISP_PM10CONC_AnnualAv_WP99.5))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half
+# Add ellipses 
+ARGcluster.aggl.PCoA.exp.plot.DISPPM10.half + stat_ellipse()
+
+# No clear clustering even when dispersion modelled PM10 or endotoxin are just stratified into halves (high and low exposure)...no effect of dispersion modelled PM10 or endotoxin on resistome composition. 
+```
+# LUR and RF-modelled livestock exposures
+## PERMANOVAs
+```{r}
+#Extract abundance matrix from phyloseq object
+ARGclusters.for.beta.div.LUR.RF.estimates <- as(otu_table(ARGcluster.aggl.noblanks.LUR.RF.estimates), "matrix")
+
+# transform into a data frame
+ARG.cluster.LUR.RF.df <- as.data.frame(ARGclusters.for.beta.div.LUR.RF.estimates)
+ARG.cluster.LUR.RF.df
+
+# compute BC distances between samples
+BC.distance.LUR.RF <- vegdist(ARG.cluster.LUR.RF.df, method =  "bray")
+
+# add columns to the df now
+ARG.cluster.LUR.RF.df$E.coli_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_LUR_estimates
+ARG.cluster.LUR.RF.df$Staph_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_LUR_estimates
+ARG.cluster.LUR.RF.df$tetW_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_LUR_estimates
+ARG.cluster.LUR.RF.df$mecA_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_LUR_estimates
+ARG.cluster.LUR.RF.df$E.coli_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_RF_predictions
+ARG.cluster.LUR.RF.df$Staph_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_RF_predictions
+ARG.cluster.LUR.RF.df$tetW_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_RF_predictions
+ARG.cluster.LUR.RF.df$mecA_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_RF_predictions
+
+# E.coli_LUR_estimates 
+# Betadisper
+Betadisper.ARGcluster.E.coli_LUR_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$E.coli_LUR_estimates)
+Betadisper.ARGcluster.E.coli_LUR_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.E.coli_LUR_estimates) # p-value = 0.3734 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.E.coli_LUR_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$E.coli_LUR_estimates, permutations = 999)# p-value = 0.292 - no significant differences in group centroids-  We can conclude that our groups (quartiles of e. coli (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# Staph_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.Staph_LUR_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$Staph_LUR_estimates)
+Betadisper.ARGcluster.Staph_LUR_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.Staph_LUR_estimates) # p-value = 0.8389 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.Staph_LUR_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$Staph_LUR_estimates, permutations = 999)# p-value = 0.42 - no significant differences in group centroids-  We can conclude that our groups (quartiles of Staph (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# tetW_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.tetW_LUR_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$tetW_LUR_estimates)
+Betadisper.ARGcluster.tetW_LUR_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.tetW_LUR_estimates) # p-value = 0.78 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.tetW_LUR_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$tetW_LUR_estimates, permutations = 999)# p-value = 0.194 - no significant differences in group centroids-  We can conclude that our groups (quartiles of tetW (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# mecA_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.mecA_LUR_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$mecA_LUR_estimates)
+Betadisper.ARGcluster.mecA_LUR_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.mecA_LUR_estimates) # p-value = 0.8345 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.mecA_LUR_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$mecA_LUR_estimates, permutations = 999)# p-value = 0.305 - no significant differences in group centroids-  We can conclude that our groups (quartiles of mecA (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# E.coli_RF_predictions 
+# Betadisper
+Betadisper.ARGcluster.E.coli_RF_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$E.coli_RF_predictions)
+Betadisper.ARGcluster.E.coli_RF_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.E.coli_RF_estimates) # p-value = 0.5236 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.E.coli_RF_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$E.coli_RF_predictions, permutations = 999)# p-value = 0.072  - borderline no significant differences in group centroids-  We can conclude that our groups (quartiles of e. coli (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# Staph_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.Staph_RF_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$Staph_RF_predictions)
+Betadisper.ARGcluster.Staph_RF_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.Staph_RF_estimates) # p-value = 0.7748 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.Staph_RF_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$Staph_RF_predictions, permutations = 999)# p-value = 0.775 - no significant differences in group centroids-  We can conclude that our groups (quartiles of Staph (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# tetW_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.tetW_RF_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$tetW_RF_predictions)
+Betadisper.ARGcluster.tetW_RF_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.tetW_RF_estimates) # p-value = 0.9639 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.tetW_RF_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$tetW_RF_predictions, permutations = 999)# p-value = 0.321 - no significant differences in group centroids-  We can conclude that our groups (quartiles of tetW (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# mecA_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.mecA_RF_estimates <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df$mecA_RF_predictions)
+Betadisper.ARGcluster.mecA_RF_estimates
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.mecA_RF_estimates) # p-value = 0.6946 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.mecA_RF_estimates) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$mecA_LUR_estimates, permutations = 999)# p-value = 0.291 - no significant differences in group centroids-  We can conclude that our groups (quartiles of mecA (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+
+# High vs low exposed
+ARGclusters.for.beta.div.LUR.RF.estimates <- as(otu_table(ARGcluster.aggl.noblanks.LUR.RF.estimates), "matrix")
+# transform into a data frame
+ARG.cluster.LUR.RF.df_HALVES <- as.data.frame(ARGclusters.for.beta.div.LUR.RF.estimates)
+ARG.cluster.LUR.RF.df_HALVES
+
+# compute BC distances between samples
+BC.distance.LUR.RF <- vegdist(ARG.cluster.LUR.RF.df_HALVES, method =  "bray")
+
+# add columns to the df now
+# add columns to the df now
+ARG.cluster.LUR.RF.df_HALVES$E.coli_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_LUR_estimates
+ARG.cluster.LUR.RF.df_HALVES$Staph_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_LUR_estimates
+ARG.cluster.LUR.RF.df_HALVES$tetW_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_LUR_estimates
+ARG.cluster.LUR.RF.df_HALVES$mecA_LUR_estimates <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_LUR_estimates
+ARG.cluster.LUR.RF.df_HALVES$E.coli_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_RF_predictions
+ARG.cluster.LUR.RF.df_HALVES$Staph_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_RF_predictions
+ARG.cluster.LUR.RF.df_HALVES$tetW_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_RF_predictions
+ARG.cluster.LUR.RF.df_HALVES$mecA_RF_predictions <- ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_RF_predictions
+
+# E.coli_LUR_estimates 
+# Betadisper
+Betadisper.ARGcluster.E.coli_LUR_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$E.coli_LUR_estimates)
+Betadisper.ARGcluster.E.coli_LUR_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.E.coli_LUR_estimates_HALVES) # p-value = 0.3734 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.E.coli_LUR_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$E.coli_LUR_estimates, permutations = 999)# p-value = 0.292 - no significant differences in group centroids-  We can conclude that our groups (halves of e. coli (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# Staph_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.Staph_LUR_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$Staph_LUR_estimates)
+Betadisper.ARGcluster.Staph_LUR_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.Staph_LUR_estimates_HALVES) # p-value = 0.8389 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.Staph_LUR_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$Staph_LUR_estimates, permutations = 999)# p-value = 0.42 - no significant differences in group centroids-  We can conclude that our groups (halves of Staph (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# tetW_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.tetW_LUR_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$tetW_LUR_estimates)
+Betadisper.ARGcluster.tetW_LUR_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.tetW_LUR_estimates_HALVES) # p-value = 0.78 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.tetW_LUR_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$tetW_LUR_estimates, permutations = 999)# p-value = 0.194 - no significant differences in group centroids-  We can conclude that our groups (halves of tetW (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# mecA_LUR_estimates
+# Betadisper
+Betadisper.ARGcluster.mecA_LUR_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$mecA_LUR_estimates)
+Betadisper.ARGcluster.mecA_LUR_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.mecA_LUR_estimates_HALVES) # p-value = 0.8345 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.mecA_LUR_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$mecA_LUR_estimates, permutations = 999)# p-value = 0.305 - no significant differences in group centroids-  We can conclude that our groups (halves of mecA (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# E.coli_RF_predictions 
+# Betadisper
+Betadisper.ARGcluster.E.coli_RF_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$E.coli_RF_predictions)
+Betadisper.ARGcluster.E.coli_RF_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.E.coli_RF_estimates_HALVES) # p-value = 0.5738 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.E.coli_RF_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$E.coli_RF_predictions, permutations = 999)# p-value = 0.945  - borderline no significant differences in group centroids-  We can conclude that our groups (halves of e. coli (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# Staph_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.Staph_RF_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$Staph_RF_predictions)
+Betadisper.ARGcluster.Staph_RF_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.Staph_RF_estimates_HALVES) # p-value = 0.4468 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.Staph_RF_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$Staph_RF_predictions, permutations = 999)# p-value = 0.696 - no significant differences in group centroids-  We can conclude that our groups (halves of Staph (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# tetW_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.tetW_RF_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$tetW_RF_predictions)
+Betadisper.ARGcluster.tetW_RF_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.tetW_RF_estimates_HALVES) # p-value = 0.8652 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.tetW_RF_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+set.seed(123)
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$tetW_RF_predictions, permutations = 999)# p-value = 0.875 - no significant differences in group centroids-  We can conclude that our groups (halves of tetW (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# mecA_RF_predictions
+# Betadisper
+Betadisper.ARGcluster.mecA_RF_estimates_HALVES <- betadisper(BC.distance.LUR.RF, ARG.cluster.LUR.RF.df_HALVES$mecA_RF_predictions)
+Betadisper.ARGcluster.mecA_RF_estimates_HALVES
+# Perform an anova using the group dispersions to check for homogeneity of the group dispersions
+anova(Betadisper.ARGcluster.mecA_RF_estimates_HALVES) # p-value = 0.5117 - group dispersions are homogenous
+plot(Betadisper.ARGcluster.mecA_RF_estimates_HALVES) # Here we see that group dispersions (distances from centroids) are very similar, but also that compositions seem to be very similar too. Let's go to adonis to test whether these compositions are different or not. 
+# Use adonis to assess compositional dissimilarity - The adonis2() function in the vegan package is an analysis of variance using distance matrices 
+adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df_HALVES$mecA_LUR_estimates, permutations = 999)# p-value - no significant differences in group centroids-  We can conclude that our groups (halves of tetW (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# None significant with data cut in halves either
+```
+## Ordinations
+```{r}
+# I will construct ordinations based on modelled microbial agent concentrations
+# Read in the ps object which has been agglomerated at the 90% identity level - this was previously created in the script 'BCHRNotebook_20210605'
+ARGcluster.aggl.noblanks <- readRDS("C://Users//Cornu003//OneDrive - Universiteit Utrecht//Documents//Epidemiology MSc 2020//Research Project//ResCap//ResCap_2020_v4_rarefied//ARGcluster.aggl.noblanks.rds")
+
+ARGcluster.aggl.noblanks.LUR.RF.estimates <- ARGcluster.aggl.noblanks
+sample_data(ARGcluster.aggl.noblanks.LUR.RF.estimates)
+
+# Add the modelled exposure data to the ps object
+sample_data(ARGcluster.aggl.noblanks.LUR.RF.estimates) <- sample_data(LUR_RF_residential_predictions)
+# Add the copdcaco status to the sample data of the ps object 
+ARGcluster.aggl.noblanks.LUR.RF.estimates@sam_data$copdcaco <- ARGcluster.aggl.noblanks@sam_data$copdcaco 
+# Check the ps sample data
+ARGcluster.aggl.noblanks.LUR.RF.estimates@sam_data
+
+
+# PCoA 
+# I will construct principal coordinates analysis based on Bray-Curtis dissimilarities. These measures are based on abundance or read count data. It generates differences in ARG abundances between two samples (e.g., at species level) which are from 0 to 1 (where 0= both samples share the same species at exactly the same abundances and 1= both samples have complete different species abundances).
+# Firstly I need to categorise my exposure variables which are currently continuous numeric to quantiles (factor variables) - I want an equal % of variables in each quantile
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT <- ARGcluster.aggl.noblanks.LUR.RF.estimates
+# I will use the quantcut() function in gtools -quantcut(x, q = 4, na.rm = TRUE, ...)
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_LUR_estimates, q=4, labels =c("1st quantile (E.coli_LUR_estimates)", "2nd quantile (E.coli_LUR_estimates)", "3rd quantile (E.coli_LUR_estimates)", "4th quantile (E.coli_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_LUR_estimates, q=4, labels =c("1st quantile (Staph_LUR_estimates)", "2nd quantile (Staph_LUR_estimates)", "3rd quantile (Staph_LUR_estimates)", "4th quantile (Staph_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_LUR_estimates, q=4, labels =c("1st quantile (tetW_LUR_estimates)", "2nd quantile (tetW_LUR_estimates)", "3rd quantile (tetW_LUR_estimates)", "4th quantile (tetW_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_LUR_estimates, q=4, labels =c("1st quantile (mecA_LUR_estimates)", "2nd quantile (mecA_LUR_estimates)", "3rd quantile (mecA_LUR_estimates)", "4th quantile (mecA_LUR_estimates)"))
+
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$E.coli_RF_predictions, q=4, labels =c("1st quantile (E.coli_RF_predictions)", "2nd quantile (E.coli_RF_predictions)", "3rd quantile (E.coli_RF_predictions)", "4th quantile (E.coli_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$Staph_RF_predictions, q=4, labels =c("1st quantile (Staph_RF_predictions)", "2nd quantile (Staph_RF_predictions)", "3rd quantile (Staph_RF_predictions)", "4th quantile (Staph_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$tetW_RF_predictions, q=4, labels =c("1st quantile (tetW_RF_predictions)", "2nd quantile (tetW_RF_predictions)", "3rd quantile (tetW_RF_predictions)", "4th quantile (tetW_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_RF_predictions, q=4, labels =c("1st quantile (mecA_RF_predictions)", "2nd quantile (mecA_RF_predictions)", "3rd quantile (mecA_RF_predictions)", "4th quantile (mecA_RF_predictions)"))
+
+# PCoA on the BC dissimilarity matrix of the clustered resistome data (as before)
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA <- ordinate(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, method="PCoA", distance="bray")
+# Extract the vectors from the PCoA 
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA$vectors # i.e. this tells us how much of the total variance is explained by each of the axes with respect to the total variance
+# Show dominant eigen planes
+plot_scree(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA)
+
+# LUR-modelled E. coli
+PCoA.plot.E.coli_LUR_estimates<- plot_ordination(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "E.coli_LUR_estimates", shape="E.coli_LUR_estimates") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by E. coli exposure quantiles (LUR-modelled)") +
+  labs(legend="E. coli (LUR-modelled) exposure quantiles")+
+    geom_point(size =2) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ), size = 2) +
+  theme(plot.title = element_text(size = 12))+ # adjusting size of title text
+  theme(axis.text=element_text(size=15),
+        axis.title=element_text(size=15)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=10),
+        legend.title = element_text(size=10))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+
+
+# LUR-modelled Staph
+PCoA.plot.Staph_LUR_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "Staph_LUR_estimates", shape="Staph_LUR_estimates") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by Staph spp. exposure quantiles (LUR-modelled)") +
+  labs(legend="Staph (LUR-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = Staph_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.Staph_LUR_estimates
+# Add ellipses 
+PCoA.plot.Staph_LUR_estimates + stat_ellipse()
+
+# LUR-modelled tetW
+PCoA.plot.tetW_LUR_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "tetW_LUR_estimates", shape="tetW_LUR_estimates") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by tetW exposure quantiles (LUR-modelled)") +
+  labs(legend="tetW (LUR-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = tetW_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.tetW_LUR_estimates
+# Add ellipses 
+PCoA.plot.tetW_LUR_estimates + stat_ellipse()
+
+
+# LUR-modelled mecA
+PCoA.plot.mecA_LUR_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "mecA_LUR_estimates", shape="mecA_LUR_estimates") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by mecA exposure quantiles (LUR-modelled)") +
+  labs(legend="mecA (LUR-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = mecA_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.mecA_LUR_estimates
+# Add ellipses 
+PCoA.plot.mecA_LUR_estimates + stat_ellipse()
+
+# RF-modelled E. coli
+PCoA.plot.E.coli_RF_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "E.coli_RF_predictions", shape="E.coli_RF_predictions") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by E. coli exposure quantiles (RF-modelled)") +
+  labs(legend="E. coli (RF-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.E.coli_RF_estimates
+# Add ellipses 
+PCoA.plot.E.coli_RF_estimates + stat_ellipse()
+
+# RF-modelled Staph
+PCoA.plot.Staph_RF_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "Staph_RF_predictions", shape="Staph_RF_predictions") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by Staph exposure quantiles (RF-modelled)") +
+  labs(legend="Staph (RF-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = Staph_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.Staph_RF_estimates
+# Add ellipses 
+PCoA.plot.Staph_RF_estimates + stat_ellipse()
+
+# RF-modelled tetW
+PCoA.plot.tetW_RF_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "tetW_RF_predictions", shape="tetW_RF_predictions") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by tetW exposure quantiles (RF-modelled)") +
+  labs(legend="tetW (RF-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = tetW_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.tetW_RF_estimates
+# Add ellipses 
+PCoA.plot.tetW_RF_estimates + stat_ellipse()
+
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data$mecA_RF_predictions
+ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA$
+# RF-modelled mecA
+PCoA.plot.mecA_RF_estimates <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "mecA_RF_predictions", shape="mecA_RF_predictions") +
+    ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by mecA exposure quantiles (RF-modelled)") +
+  labs(legend="mecA (RF-modelled) exposure quantiles")+
+    geom_point(size =5) +
+    geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = mecA_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.mecA_RF_estimates
+# Add ellipses 
+PCoA.plot.mecA_RF_estimates + stat_ellipse()
+
+
+## CUTTING EXPOSURE DATA INTO HALVES 
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES <- ARGcluster.aggl.noblanks.LUR.RF.estimates
+# I will use the quantcut() function in gtools -quantcut(x, q = 4, na.rm = TRUE, ...)
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_LUR_estimates, q=2, labels =c("Top half (E.coli_LUR_estimates)", "Bottom half (E.coli_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_LUR_estimates, q=2, labels =c("Top half (Staph_LUR_estimates)", "Bottom half (Staph_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_LUR_estimates, q=2, labels =c("Top half (tetW_LUR_estimates)", "Bottom half (tetW_LUR_estimates)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_LUR_estimates<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_LUR_estimates, q=2, labels =c("Top half (mecA_LUR_estimates)", "Bottom half (mecA_LUR_estimates)"))
+
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$E.coli_RF_predictions, q=2, labels =c("Top half (E.coli_RF_predictions)", "Bottom half (E.coli_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$Staph_RF_predictions, q=2, labels =c("Top half (Staph_RF_predictions)", "Bottom half (Staph_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$tetW_RF_predictions, q=2, labels =c("Top half (tetW_RF_predictions)", "Bottom half (tetW_RF_predictions)"))
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_RF_predictions<-quantcut(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data$mecA_RF_predictions, q=2, labels =c("Top half (mecA_RF_predictions)", "Bottom half (mecA_RF_predictions)"))
+
+# PCoA on the BC dissimilarity matrix of the clustered resistome data (as before)
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA <- ordinate(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, method="PCoA", distance="bray")
+# Extract the vectors from the PCoA 
+ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA$vectors # i.e. this tells us how much of the total variance is explained by each of the axes with respect to the total variance
+# Show dominant eigen planes
+plot_scree(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA)
+
+# LUR-modelled E. coli
+PCoA.plot.E.coli_LUR_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "E.coli_LUR_estimates", shape="E.coli_LUR_estimates") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by E. coli exposure halves (LUR-modelled)") +
+  labs(legend="E. coli (LUR-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.E.coli_LUR_estimates_HALVES
+# Add ellipses 
+PCoA.plot.E.coli_LUR_estimates_HALVES + stat_ellipse()
+
+
+# LUR-modelled Staph
+PCoA.plot.Staph_LUR_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "Staph_LUR_estimates", shape="Staph_LUR_estimates") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by Staph spp. exposure halves (LUR-modelled)") +
+  labs(legend="Staph (LUR-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = Staph_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.Staph_LUR_estimates_HALVES
+# Add ellipses 
+PCoA.plot.Staph_LUR_estimates_HALVES + stat_ellipse()
+
+# LUR-modelled tetW
+PCoA.plot.tetW_LUR_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "tetW_LUR_estimates", shape="tetW_LUR_estimates") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by tetW exposure halves (LUR-modelled)") +
+  labs(legend="tetW (LUR-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = tetW_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.tetW_LUR_estimates_HALVES
+# Add ellipses 
+PCoA.plot.tetW_LUR_estimates_HALVES + stat_ellipse()
+
+
+# LUR-modelled mecA
+PCoA.plot.mecA_LUR_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "mecA_LUR_estimates", shape="mecA_LUR_estimates") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by mecA exposure halves (LUR-modelled)") +
+  labs(legend="mecA (LUR-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = mecA_LUR_estimates))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.mecA_LUR_estimates_HALVES
+# Add ellipses 
+PCoA.plot.mecA_LUR_estimates_HALVES + stat_ellipse()
+
+# RF-modelled E. coli
+PCoA.plot.E.coli_RF_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "E.coli_RF_predictions", shape="E.coli_RF_predictions") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by E. coli exposure halves (RF-modelled)") +
+  labs(legend="E. coli (RF-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.E.coli_RF_estimates_HALVES
+# Add ellipses 
+PCoA.plot.E.coli_RF_estimates_HALVES + stat_ellipse()
+
+# RF-modelled Staph
+PCoA.plot.Staph_RF_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "Staph_RF_predictions", shape="Staph_RF_predictions") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by Staph exposure halves (RF-modelled)") +
+  labs(legend="Staph (RF-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = Staph_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.Staph_RF_estimates_HALVES
+# Add ellipses 
+PCoA.plot.Staph_RF_estimates_HALVES + stat_ellipse()
+
+# RF-modelled tetW
+PCoA.plot.tetW_RF_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "tetW_RF_predictions", shape="tetW_RF_predictions") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by tetW exposure halves (RF-modelled)") +
+  labs(legend="tetW (RF-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = tetW_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.tetW_RF_estimates_HALVES
+# Add ellipses 
+PCoA.plot.tetW_RF_estimates_HALVES + stat_ellipse()
+
+
+# RF-modelled mecA
+PCoA.plot.mecA_RF_estimates_HALVES <- plot_ordination( ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES, ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES.PCoA, color = "mecA_RF_predictions", shape="mecA_RF_predictions") +
+  ggtitle("BC PCoA (fully corrected and rarefied ARG counts, 90% identity clustered) - \ncoloured by mecA exposure halves (RF-modelled)") +
+  labs(legend="mecA (RF-modelled) exposure halves")+
+  geom_point(size =5) +
+  geom_text( aes( label=row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.HALVES@sam_data),hjust=-0.3, vjust=-0.5 ) ) +
+  theme(plot.title = element_text(size = 13))+ # adjusting size of title text
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10)) + # adjusting size of axis text
+  theme(legend.text=element_text(size=8),
+        legend.title = element_text(size=8))+ # adjusting size of legend text
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = mecA_RF_predictions))# adds ellipses to the PCoA, fills ellipses with colour according to copdcaco status, colour transparency=1/4 of strength 
+PCoA.plot.mecA_RF_estimates_HALVES
+# Add ellipses 
+PCoA.plot.mecA_RF_estimates_HALVES + stat_ellipse()
+
+```
+### E. coli PCoA plot for manuscript
+```{r}
+# E. coli exposure (RF modelled)
+set.seed(123)
+E.coli_permanova_result <- adonis2(BC.distance.LUR.RF~ ARG.cluster.LUR.RF.df$E.coli_LUR_estimates, permutations = 999)
+E.coli_permanova_pval <- E.coli_permanova_result$`Pr(>F)`[1]
+# p-value = 0.292 - no significant differences in group centroids-  We can conclude that our groups (quartiles of e. coli (LUR-modelled) exposure present homogeneity among group dispersions (compositions vary similarly) and also they have very similar compositions (adonis not significant)
+
+# RF-modelled E. coli
+PCoA.plot.E.coli_RF_estimates <- plot_ordination(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "E.coli_RF_predictions", shape="E.coli_RF_predictions") +
+    ggtitle("Bray-Curtis PCoA - E. coli exposure") +
+    labs(legend="E. coli (RF-modelled) exposure quantiles") +
+    geom_point(size = 4) +
+    geom_text(aes(label = row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +  # Adjust the size here
+    theme(
+        plot.title = element_text(size = 12),
+        axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10)
+    ) +
+    stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions)) +
+    geom_text(x = 0.33, y = -0.55, label = paste("PERMANOVA, p-value =", E.coli_permanova_pval), size = 4, color = "black", family = "Arial") +
+    xlab("PCoA1") +
+    ylab("PCoA2") +
+    coord_fixed(ratio = 1) +
+    guides(color = guide_legend(title = "E. coli exposure quantiles"))
+PCoA.plot.E.coli_RF_estimates
+
+combined_plot <- PCoA.plot.E.coli_RF_estimates + 
+  guides(
+    color = guide_legend(
+      title = "E. coli exposure quantiles", 
+      override.aes = list(shape = 19)
+    )
+  )
+
+combined_plot
+
+ggsave("Output_files//PCoAs//PCoA.plot.E.coli_RF_estimates.png", PCoA.plot.E.coli_RF_estimates, width = 8, height = 6, dpi = 3000)
+```
+# PCoA plots for manuscript
+```{r}
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+
+# COPD vs control PCoA 
+ARGcluster.aggl.PCoA.plot.noblanks <- plot_ordination(ARGcluster.aggl.noblanks, ARGcluster.aggl.PCoA.noblanks.ordination, color = "copdcaco", shape = "copdcaco") +
+  ggtitle("Bray-Curtis PCoA - COPD vs control") +
+  labs(legend = "COPD/control status") +
+  geom_point(aes(color = copdcaco), size = 4) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(aes(label = row.names(ARGcluster.aggl.noblanks@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +
+  theme(
+    plot.title = element_text(size = 12),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10)
+  ) +
+  stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = copdcaco, color = copdcaco)) +
+  scale_fill_manual(values = c("cornflowerblue", "orange")) +
+  scale_color_manual(values = c("cornflowerblue", "orange")) +
+  geom_text(x = 0.42, y = -0.47, label = paste("PERMANOVA, p-value =", Permanova_pval_COPDcontrol), size = 4, color = "black", family = "Arial") +
+  xlab("PCoA1") +
+  ylab("PCoA2") +
+  coord_fixed(ratio = 1) +
+  guides(color = guide_legend(title = "Study population"))
+
+
+# RF-modelled E. coli
+PCoA.plot.E.coli_RF_estimates <- plot_ordination(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT, ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT.PCoA, color = "E.coli_RF_predictions", shape="E.coli_RF_predictions") +
+    ggtitle("Bray-Curtis PCoA - E. coli exposure") +
+    labs(legend="E. coli (RF-modelled) exposure quantiles") +
+    geom_point(size = 4) +
+    geom_text(aes(label = row.names(ARGcluster.aggl.noblanks.LUR.RF.estimates.QUANT@sam_data), hjust = -0.3, vjust = -0.5), size = 2) +  # Adjust the size here
+    theme(
+        plot.title = element_text(size = 12),
+        axis.text = element_text(size = 15),
+        axis.title = element_text(size = 15),
+    ) +
+    stat_ellipse(geom = "polygon", alpha = 1/6, aes(fill = E.coli_RF_predictions)) +
+    geom_text(x = 0.32, y = -0.55, label = paste("PERMANOVA, p-value =", E.coli_permanova_pval), size = 4, color = "black", family = "Arial") +
+    xlab("PCoA1") +
+    ylab("PCoA2") +
+    coord_fixed(ratio = 1) +
+    guides(color = guide_legend(title = "E. coli exposure quantiles"))+
+  theme(legend.position="none")+ 
+  theme(legend.position="none")
+
+```
+

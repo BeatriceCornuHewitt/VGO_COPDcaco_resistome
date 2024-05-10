@@ -1,13 +1,12 @@
 ---
-title: "4 - Resistome basics"
-output: html_notebook
+title: "3 - Resistome basics"
+author: "b.cornuhewitt@uu.nl"
 ---
 # Packages
 ```{r}
 library(phyloseq); library(openxlsx); library(ggplot2); library(ggpubr); library(ggthemes); library(dplyr); library(scales); library(ggvenn); library(RColorBrewer); library(microbiome); library(parallel); library(vegan)
-
 ```
-# Read in the ps object
+# Read in the ps objects
 ```{r}
 ps <- readRDS("../Output_files/Phyloseq_objects/4_COPD_resistome_phyloseq_object_rarefied_FPKM.Rds")
 ps_aggl <- readRDS("../Output_files/Phyloseq_objects/5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
@@ -117,7 +116,7 @@ Bacterial_load_comparison <- ggplot(plot_data, aes(x = Group, y = Bacterial_Load
   theme(plot.background = element_rect(fill = "white"))
 
 # Save the ggplot to the output_files folder
-ggsave(filename = "Output_files/Bacterial_load_comparison.png", plot = Bacterial_load_comparison, width = 8, height = 6, dpi = 300)
+ggsave(filename = "../Output_files/Bacterial_load_comparison.png", plot = Bacterial_load_comparison, width = 8, height = 6, dpi = 300)
 ```
 # Checking FPK values across COPD, control and blank groups
 ```{r}

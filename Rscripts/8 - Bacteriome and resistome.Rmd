@@ -1,0 +1,502 @@
+---
+title: "8 - Bacteriome and resistome"
+output: html_notebook
+---
+# Procrustes
+## Prepare data
+```{r}
+# Procrustes plot used to look at the association between the resistome (90% ID clustering) and the bacteriome
+microbiome.ps <- readRDS("..//Data//ps_COPD_d2_f_01%in2samples_08APR2021")
+microbiome.ps@sam_data$SampleID
+microbiome.ps # Inspect microbiome phyloseq object 
+# There are 356 samples in total as microbiome data is longitudinal with 3 time points therefore more than one sample per sample ID
+saveRDS(microbiome.ps, file = "..//Data//raw//ps_COPD_d2_f_01%in2samples_08APR2021.rds")
+
+# Create a vector of sample IDs and then prune the microbiome ps to just include these samples 
+vector.sampleIDs <- c('10279','10839','11143','11502','11588','11814','12927','12965','12980','13571','13743','13764','13908','14587','15035','15391','15446','15573','16236','16716','16994','17053','17918','18439','18859','19586','20148','20264','20278','20407','21130','21167','21397','21548','21696','27187','27446','27641','27984','28038','29117','29401','29593','29745','30113','30148','30256','30491','30972','31465','31516','31563','31637','32372','32530','33076','33579','35287','35537','36022','36166','36424','36503','36845','37083','37250','38249','38407','38776','veldbl16','veldbl3','veldbl5')
+
+vector.OP.time <- "T1"
+
+# Prune microbiome data to contain only time point 1 (T1) - all participants have sample taken at T1
+microbiome.ps.T1 <- prune_samples(microbiome.ps@sam_data$OP_time %in% vector.OP.time, microbiome.ps)
+# There are more participants in the microbiome dataset so prune the microbiome ps object to contain the same as the resistome samples
+microbiome.ps.final.noblanks <- prune_samples(microbiome.ps.T1@sam_data$ID %in% vector.sampleIDs, microbiome.ps.T1)
+microbiome.ps.final.noblanks  # this ps object has only 68 samples- check missing one
+microbiome.ps.final.noblanks@sam_data$ID # Sample ID 19586 was filtered out of the microbiome ps object as it had 0 reads in microbiome analysis
+# Check to see what ARGs were present in this sample 
+get_taxa(ARGcluster.aggl, "19586") # Some ARGs detected in this sample but for the procrustes analysis we will also remove this from the resistome data set
+Resistome.ps <- prune_samples(sample_names(ARGcluster.aggl) != "19586", ARGcluster.aggl) 
+blancs <- c("veldbl16", "veldbl3", "veldbl5")
+Resistome.ps.noblanks <- prune_samples(!sample_names(Resistome.ps)%in%blancs, Resistome.ps)
+# Now there are 68 samples in the resistome dataset to match the 68 in the microbiome dataset
+
+# Agglomerate the microbiome data to genus level i.e. merge ASVs which are in the same genus  
+colnames(tax_table(microbiome.ps.final.noblanks))
+row.names(microbiome.ps.final.noblanks@sam_data)
+microbiome.ps.final.noblanks # 1092 taxa (ASVs) pre agglomeration
+# Use function tax_glom2 - 6 is the Genus level in the tax_table of microbiome.ps.final.noblanks object. This creates a new ps object with genus level as default 
+microbiome.ps.genus <- tax_glom2(microbiome.ps.final.noblanks, taxrank=rank_names(microbiome.ps.final.noblanks)[6], NArm=TRUE)
+taxa_names(microbiome.ps.genus)
+microbiome.ps.genus # Now 91 taxa (genus level), instead of 1092 individual ASVs
+# The 'taxa_names' are not the genus level names - instead these are the ASV names
+tax_table(microbiome.ps.genus) # All 'species level' data is now NA so the lowest level in the tax_table is Genus level 
+ntaxa(microbiome.ps.final.noblanks); ntaxa(microbiome.ps.genus) # 91 Genus level bacteria vs 1092 species level bacteria 
+microbiome.ps.genus@tax_table[,6]
+head(microbiome.ps.genus@otu_table)
+taxa_names(microbiome.ps.genus)
+
+# Hellinger transformation of microbiome data - using the definition of the transformation given by Equation (13) in Legendre and Gallagher (2001) DOI: 10.1007/s004420100716---convert the data to proportions and then take the square root
+# vegan 'decostand()' function Hellinger transforms the data
+microbiome.ps.genus.hell<- microbiome.ps.genus
+otu_table(microbiome.ps.genus.hell) <-otu_table(decostand(otu_table(microbiome.ps.genus.hell), method = "hellinger"), taxa_are_rows=FALSE)
+```
+## Run procrustes
+```{r}
+# PCoA ordinations
+## Microbiome 
+set.seed(123)
+microbiome.PCoA <- ordinate( microbiome.ps.genus.hell, 
+                             method="PCoA", 
+                             distance="bray")
+
+microbiome.PCoA.plot <- plot_ordination(microbiome.ps.genus.hell, microbiome.PCoA,
+                                        color="copdcaco", 
+                                        shape="copdcaco" ) +
+  ggtitle("MICROBIOME: PCoA on Bray-Curtis distances, hellinger transformed data") +
+  geom_point(size = 3) +
+  geom_text( aes( label=row.names(microbiome.ps.genus.hell@sam_data),hjust=-0.3, vjust=-0.5)) +
+  stat_ellipse()
+microbiome.PCoA.plot
+
+# Extract the data from the PCoA plot for use in the procrustes analysis
+microbiome.procrustes.PCoA.data <- microbiome.PCoA.plot$data[, 1:2]
+# Remove 'T1' from sample ID name so that it matches the resistome data
+rownames(microbiome.procrustes.PCoA.data)
+rownames(microbiome.procrustes.PCoA.data) <- stringr::str_replace(rownames(microbiome.procrustes.PCoA.data), "T\\d", replacement = "")
+rownames(microbiome.procrustes.PCoA.data) #'T1' has now been removed from the row names
+
+## Resistome
+resistome.PCoA<- ordinate( Resistome.ps.noblanks, method="PCoA", distance="bray")
+resistome.PCoA.plot <- plot_ordination( Resistome.ps.noblanks, resistome.PCoA, color="copdcaco", shape="copdcaco" ) +
+    ggtitle("RESISTOME: PCoA on Bray-Curtis distances") +
+    geom_point(size = 3) +
+    geom_text( aes( label=row.names(Resistome.ps.noblanks@sam_data),hjust=-0.3, vjust=-0.5 ) )+
+   stat_ellipse()
+resistome.PCoA.plot
+# Extract the data from the PCoA plot for use in the procrustes analysis
+resistome.procrustes.PCoA.data <- resistome.PCoA.plot$data[, 1:2]
+
+# Procrustes
+procrustes.PCoA.symm <- procrustes(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data,
+                                          symmetric = TRUE, 
+                                          permutations = 9999)
+print(procrustes.PCoA.symm)
+# Significance testing using 'protest' (permutational test)
+set.seed(123)
+protest(microbiome.procrustes.PCoA.data, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.4643 , p= 1e-04, m-squared = 0.7844
+
+# Plot procrustes errors
+plot(procrustes.PCoA.symm, 
+     kind = 2, 
+     main= "Procrustes errors - PCoA microbiome/resistome")
+
+# PCoA procrustes
+theme_set(theme_cowplot())
+PCoA.pro.df <- data.frame(rda1=procrustes.PCoA.symm$Yrot[,1], rda2=procrustes.PCoA.symm$Yrot[,2], xrda1 = procrustes.PCoA.symm$X[,1], xrda2 = procrustes.PCoA.symm$X[,2])
+PCoA.pro.df$copdcontrol <- microbiome.ps.genus.hell@sam_data$copdcaco
+PCoA.pro.df$copdcontrol <- factor(PCoA.pro.df$copdcontrol, levels = c(0, 1), labels = c("Control", "COPD"))
+
+PCoA.pro.plot <- ggplot(PCoA.pro.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol, shape="Microbiome", fill=copdcontrol), size = 4) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol, shape="Resistome", fill=copdcontrol), size = 4) +
+  geom_segment(aes(x=rda1, y=rda2, xend=xrda1, yend=xrda2, colour=copdcontrol), arrow=arrow(length=unit(0.2, "cm")))
+
+PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "coral1")) +  # Define the color mapping
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +  # Define the shape mapping
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "coral1")) +  # Define the fill mapping
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.464, Significance: 1e-04") +
+  guides(fill = guide_legend(override.aes = list(shape = NA)))  # Remove the contents of the legend
+
+
+
+
+# Randomised procrustes
+microbiome.PCoA.random <- microbiome.procrustes.PCoA.data
+row.names(microbiome.PCoA.random)
+row.names(microbiome.PCoA.random) <- sample(row.names(microbiome.PCoA.random))
+microbiome.PCoA.random <- microbiome.PCoA.random[match(row.names(resistome.procrustes.PCoA.data), row.names(microbiome.PCoA.random)), ]
+
+procrustes.PCoA.randomised <- procrustes(microbiome.PCoA.random, resistome.procrustes.PCoA.data, symmetric = TRUE, permutations= 9999)
+
+# Significance testing using 'protest' 
+set.seed(123)
+protest(microbiome.PCoA.random, resistome.procrustes.PCoA.data, scores = "sites", permutations = 9999) # correlation coefficient = 0.08359, p= 0.8483 ,m-squared = 0.993 
+
+# Plot procrustes errors
+plot(procrustes.PCoA.randomised, 
+     kind = 2, 
+     main= "Procrustes errors - PCoA microbiome/resistome randomised")
+
+# Random PCoA procrustes
+PCoA.pro.r.df <- data.frame(rda1=pro.PCoA.r$Yrot[,1], rda2=pro.PCoA.r$Yrot[,2], xrda1 = pro.PCoA.r$X[,1], xrda2 = pro.PCoA.r$X[,2])
+PCoA.pro.r.df$copdcontrol <- copdcaco.df.noblanks.no19586$COPD.control.blank
+
+PCoA.pro.plot.r <- ggplot(PCoA.pro.r.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol)) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol)) +
+  geom_segment(aes(x=rda1,y=rda2,xend=xrda1,yend=xrda2,colour=copdcontrol),arrow=arrow(length=unit(0.2,"cm")))
+
+PCoA.pro.plot.r + 
+  scale_colour_manual(values = c("cornflowerblue", "coral1")) +  # Define the color mapping
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +  # Define the shape mapping
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "coral1")) +  # Define the fill mapping
+  labs(title = "PCoA procrustes - randomised microbiome", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.17, Significance: 0.28") +
+  guides(fill = guide_legend(override.aes = list(shape = NA))) + # Remove the contents of the legend
+```
+# Figure for manuscript 
+```{r}
+suppressWarnings(library(cowplot))
+theme_set(theme_cowplot())
+
+PCoA.pro.plot <- ggplot(PCoA.pro.df) +
+  geom_point(aes(x=rda1, y=rda2, colour=copdcontrol, shape="Microbiome", fill=copdcontrol), size = 3) +
+  geom_point(aes(x=xrda1, y=xrda2, colour=copdcontrol, shape="Resistome", fill=copdcontrol), size = 2) +
+  geom_segment(aes(x=rda1, y=rda2, xend=xrda1, yend=xrda2, colour=copdcontrol), arrow=arrow(length=unit(0.2, "cm")))
+
+Final.PCoa.pro <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +  # Define the color mapping
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +  # Define the shape mapping
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +  # Define the fill mapping
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", subtitle = "Correlation: 0.35, Significance: 6e-04", size = 16 ) +
+  guides(fill = guide_legend(override.aes = list(shape = NA)))+ # Remove the contents of the legend
+           theme(axis.text.x = element_text(size = 16), 
+                 axis.text.y = element_text(size = 16), 
+                 axis.title.x = element_text(size = 16),
+                 axis.title.y = element_text(size = 16),
+                 plot.subtitle = element_text(size=16))  # Adjust the size of x- and y-axis labels
+
+ggsave(filename = "Output_files//Procrustes//Final.PCoa.pro.png", plot = Final.PCoa.pro, width = 8, height = 6, dpi = 1000)
+
+
+
+Final.PCoa.pro2 <- PCoA.pro.plot + 
+  scale_colour_manual(values = c("cornflowerblue", "orange")) +
+  scale_shape_manual(values = c("Microbiome" = 21, "Resistome" = 24)) +
+  scale_fill_manual(values = c("Control" = "cornflowerblue", "COPD" = "orange")) +
+  labs(title = "PCoA procrustes", y = "PCo2", x = "PCo1", size = 16 ) +
+  guides(fill = guide_legend(override.aes = list(shape = NA)))+
+  theme(
+    axis.text.x = element_text(size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    plot.subtitle = element_text(size=16, hjust = 1, vjust = 0),
+    plot.margin = margin(0, 0, 1, 1, "cm")  # Add a margin to make space for the subtitle
+ # Adjust the position of the subtitle
+  )
+
+```
+
+# Co-occurrence network 
+## Prepare data
+```{r}
+# Investigating ARG-ARG co-occurrences and bacteria-ARG co-occurrences. 
+# Creating these networks gives us an idea of whether there is co-selection/co-occurrence or competition between bacteria and ARGs. 
+# Assess whether there are positive or negative co-occurrences between certain ARGs or bacteria. 
+# Use 90% clustered ARGs (Relative rarefied, gene length corrected and 16S qPCR count corrected), and bacterial taxa on the genus level (not yet filtered but may need to do)
+
+Resistome.ps.noblanks # This ARG PS object is 90% identity clustered - data is Relative rarefied, gene length corrected and 16S qPCR count corrected. 
+microbiome.ps.genus # This microbiome PS object is agglomerated at the genus level. Microbiome data has been prevalence/abundance filtered - taxa are kept if their relative abundance is > 0.1% (proportion = 0.001) (abundance) in more than 2 samples (prevalence)
+
+# Resistome
+# Rename the ARGs by their cluster name
+Resistome.ps.noblanks.names <- Resistome.ps.noblanks
+colnames(Resistome.ps.noblanks.names@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+
+# Microbiome ps
+# Remove 'T1' from sample ID name to match the resistome data
+microbiome.ps.genus.matched <- microbiome.ps.genus
+rownames(microbiome.ps.genus.matched@otu_table)
+rownames(microbiome.ps.genus.matched@otu_table) <- stringr::str_replace(rownames(microbiome.ps.genus@otu_table), "T\\d", replacement = "")
+
+# Rename the genus level labels - currently ASV names are used but I need to manually change this to the genus level names in the ps object 
+microbiome.ps.genus.matched.names <- microbiome.ps.genus.matched
+colnames(microbiome.ps.genus.matched.names@otu_table) <- c('Actinomyces','F0332','Alloscardovia','Bifidobacterium','Parascardovia','Scardovia','Corynebacterium','Rothia','Propionibacterium','Atopobium','Olsenella','Cryptobacterium','Phocaeicola','F0058','Porphyromonas','Alloprevotella','Prevotella','Rikenellaceae RC9 gut group','Tannerella','Capnocytophaga','Bergeyella','Chryseobacterium','Lentimicrobium','Campylobacter','Bacillus','Solobacterium','Abiotrophia','Alloiococcus','Granulicatella','Enterococcus','Lactobacillus','Listeria','Lactococcus','Streptococcus','Mycoplasma','Gemella','Staphylococcus','Defluviitaleaceae UCG-011','Butyrivibrio','Catonella','Johnsonella','Lachnoanaerobaculum','Oribacterium','Shuttleworthia','Stomatobaculum','Peptococcus','[Eubacterium] brachy group','[Eubacterium] nodatum group','[Eubacterium] saphenum group','Amnipila','Family XIII UCG-001','Mogibacterium','[Eubacterium] yurii group','Filifactor','Peptoanaerobacter','Peptostreptococcus','Centipeda','Selenomonas','Anaeroglobus','Dialister','Megasphaera','Veillonella','Fusobacterium','Leptotrichia','Oceanivirga','Streptobacillus','Candidatus Saccharimonas','TM7a','TM7x','Afipia','Lautropia','Ralstonia','Alysiella','Conchiformibius','Eikenella','Kingella','Neisseria','Simonsiella','Cardiobacterium','Escherichia-Shigella','Salmonella','Erwinia','Actinobacillus','Aggregatibacter','Haemophilus','Faucicola','Moraxella','Pseudomonas','Stenotrophomonas','Treponema','Fretibacterium')
+```
+## Compute correlations
+```{r}
+#' Calculate the co-occurrence of taxa (pair-wise) between one or two tax tables
+#' 
+#' Alex adapted to fit two different matrices to test co-occurrence to
+#'
+#' Inspired on Jin Choi's within set algorithm plain R one set
+#' Inspired by phylosmith package doing co-occurrence on ps objects but within one object
+#' 
+#' Method details:
+#'    Using Spearman's rank (default), pearson or kendall tau as methods.
+#' 
+#'    Requires one or two phyloseq objects (subset where appropriate first)
+#'      - Providing one ps will calculate WITHIN the ps
+#'      - Providing two PS objects will calculate BETWEEN
+#' 
+#'    Provide filtering cutoffs for rho and p
+#' 
+#'    By default it will filter correlations where one or both columns are only zero (filt_zero)
+#' 
+#'    Verbose just prints a % text line to monitor progress.
+#' 
+#' @param ps_x phyloseq object X (obligatory)
+#' @param ps_y phyloseq object Y (optional)
+#' @param method method to use (spearman default). Basically all methods corr.test supports.
+#' @param alternative (optional) - alternative indicates the alternative hypothesis and must be one of "two.sided", "greater" or "less". "greater" corresponds to positive association, "less" to negative association.
+#' @param exact (optional) default FALSE - a logical indicating whether an exact p-value should be computed. Used for Kendall's \(\tau\) and Spearman's \(\rho\).
+#' @param adjust default Bejamini-Hochberg (BH). Any method from p.adjust function should work. Provide "none" for raw.
+#' @param rho.filt default 0.6
+#' @param p.filt filter adjusted p value. default 0.01. if raw p use adjust method "none"
+#' @param filt_zeo default TRUE 
+#' @param verbose default TRUE
+#'
+#' @returns Co-correlation data frame of all taxa (including self-self)
+#'
+#' @author Alex Bossers \email{a.bossers@uu.nl} 
+#' 
+
+ps_co_occurrence <- function( ps_x='', ps_y='', 
+                              method="spearman", alternative='two.sided', exact=FALSE, adjust="BH",
+                              rho.filt=0.6, p.filt=0.01, filt_zero=TRUE, verbose=TRUE ) 
+{
+  # check input params
+  if ( is(ps_x,"phyloseq") ) {
+    a = ps_x
+  } else {
+    stop("Phyloseq object X required!")
+  }
+  
+  # Check if co-occurrence on itself or on two different tables
+  if ( is( ps_y, "phyloseq" ) ) {
+    b = ps_y
+    n.exclude = 0
+    cat("Phyloseq Y provided => all vs all taxa (incl self-self complete matrix)\n")
+  } else {
+    b = ps_x
+    n.exclude = 1 # counter to avoid self-self
+    cat("Phyloseq Y NOT provided => self all vs all taxa excluding self-self (half matrix)\n")
+  }
+  
+  a.n <- ntaxa(a)
+  b.n <- ntaxa(b)
+  
+  a.otu <- data.frame( otu_table(a) )
+  b.otu <- data.frame( otu_table(b) )
+  
+  # Check that samples are the same
+  if ( ! all( row.names(a.otu) == row.names(b.otu) ) ) {
+    stop("Sample rows are not equal")
+  }
+  
+  results <- data.frame()
+  ps_y_from <- 1
+  
+  for( x in 1:(a.n - n.exclude) ) {
+    if(n.exclude) {
+      ps_y_from <- x + n.exclude
+    }
+    for( y in ps_y_from:b.n ) {
+      
+      # track abundance and test if zero
+      species1.ab <- sum( a.otu[,x] )
+      species2.ab <- sum( b.otu[,y] )
+      
+      test <- cor.test( a.otu[,x], b.otu[,y], method="spearman", alternative=alternative, exact=exact, na.action=na.rm )
+      rho<-test$estimate
+      p.value<-test$p.value
+      
+      if ( filt_zero & ( species1.ab <= 0 | species2.ab <= 0 ) ) {
+        rho <- 0
+        p.value <- 1
+      }
+      
+      # if results meet filters add to df
+      if( abs(rho) >= rho.filt & p.value <= p.filt ) {
+        new.row <- data.frame( "taxa.X"=taxa_names(a)[x], "taxa.Y"=taxa_names(b)[y], rho, p.value, species1.ab, species2.ab )
+        results <- rbind( results, new.row )
+      }
+    }
+    if(verbose) { cat( paste( round( x / a.n * 100), "% Done of dataset.\n")) }
+  }
+  
+  # apply multiple testing correction
+  results$p.adjust <- p.adjust( results$p.value, method=adjust )
+  cat("\nMultiple testing correction method '",adjust,"' applied\n")
+  #filter again
+  results <- results[ results$p.adjust <= p.filt, ]
+  
+  return(results)
+}
+
+# Bacteria-Bacteria correlations
+bact_bact_co_occurrence <- ps_co_occurrence(ps_x = microbiome.ps.genus.matched.names,
+                              method="spearman", alternative='two.sided', exact=FALSE, adjust="BH",
+                              rho.filt=0.6, p.filt=0.01, filt_zero=TRUE, verbose=TRUE ) 
+
+# ARG-ARG Spearman correlations 
+ARG_ARG_co_occurrence <- ps_co_occurrence(ps_x = Resistome.ps.noblanks.names,
+                              method="spearman", alternative='two.sided', exact=FALSE, adjust="BH",
+                              rho.filt=0.6, p.filt=0.01, filt_zero=TRUE, verbose=TRUE ) 
+
+# Bacteria-ARG Spearman correlations
+bact_ARG_co_occurrence <- ps_co_occurrence( Resistome.ps.noblanks.names, microbiome.ps.genus.matched.names, 
+                              method="spearman", alternative='two.sided', exact=FALSE, adjust="BH",
+                              rho.filt=0.6, p.filt=0.01, filt_zero=TRUE, verbose=TRUE ) 
+
+# Combined ARG-ARG & bacteria-ARG correlations
+combined_co_occurrence <- rbind(ARG_ARG_co_occurrence, bact_ARG_co_occurrence)
+
+
+# Use iGraph to create the network based on these Spearman rank correlations
+# "The edges data frame needs at least two columns, ‘from’ and ‘to’, which should correspond with the ids from the nodes data frame. Since we used cooccur’s numeric labels as our ids, we can use sp1 as our ‘from’ column and ‘sp2’ as our to column. (Since our network isn’t directed, we could reverse these and it wouldn’t matter.) We’ll then add some color so our edges match our nodes such that we’ll have a lighter color for co-occurrences that occur at a lower frequency than expected and a darker color for co-occurrences that occur at a higher frequency. To make the distinction between ‘higher’ and ‘lower’ even more obvious, we’ll also specify that co-occurrences that are lower than expected have a dashed line.
+# Create an edges dataframe from the significant pairwise co-occurrences.
+```
+## Create networks
+```{r}
+# Bacteria-bacteria correlations 
+edges_bac_bac <- data.frame(from = bact_bact_co_occurrence$taxa.X, to = bact_bact_co_occurrence$taxa.Y)
+network_bact_bact <- graph_from_data_frame(d= edges_bac_bac , directed = F, vertices = NULL)
+print(network_bact_bact, e=TRUE, v=TRUE)
+plot(network_bact_bact) # default igraph plot of co-occurrence network
+# Count the number of degree for each node (used for scaling of nodes in plot function)
+deg.bac <- degree(network_bact_bact, mode="all")
+network_graph_bact_bact <- 
+  plot(
+  network_bact_bact,
+  layout = layout.fruchterman.reingold, 
+  main = "Bacteria-Bacteria co-occurrence network",
+  vertex.size = deg.bac*6,
+  vertex.color = "lightgreen",
+  vertex.frame.color = "darkgray",
+  vertex.shape = "sphere",
+  vertex.label = V(network_bact_bact)$name, # names of the nodes
+  vertex.label.family = "sans",
+  vertex.label.font = 4,            # Font of node names
+  vertex.label.cex = 1, 
+  vertex.label.dist = 0,
+  vertex.label.color = "black",     # Color of node names
+  color = ifelse(bact_bact_co_occurrence$rho <= 0,"#FF0000","#00FF00"), # if rho is negative then colour connecting line is red, if rho is positive then connecting line is green
+  width = ifelse(bact_bact_co_occurrence$p.adjust <= 0.00001,5,1), # if p.adj is <0.00001 then width of edge is 5, if p.adj is > 0.00001 then width of edge is 1
+  lty = ifelse(bact_bact_co_occurrence$p.adjust <= 0.00001, "solid", "dashed"),
+  label = NA, # no edge labels wanted
+  curved = TRUE) # instead of straight edges, use curved edges
+# count number of nodes and edges in the network
+vcount(network_bact_bact)
+ecount(network_bact_bact)
+# export edge list as csv 
+as.data.frame(edges_bac_bac)
+write.csv(as.data.frame(edges_bac_bac), "Output_files//Co-occurrence_networks//edges_bac_bac.csv")
+# Export graph as graphml 
+write.graph(network_bact_bact, "Output_files//Co-occurrence_networks//network_bact_bact_graphml_file.graphml", format= "graphml") # Now import this file into gephi for graph visualisation and creation of networks here
+
+
+# ARG-ARG
+edges_ARG_ARG <- data.frame(from = ARG_ARG_co_occurrence$taxa.X, to = ARG_ARG_co_occurrence$taxa.Y) 
+network_ARG_ARG <- graph_from_data_frame(d= edges_ARG_ARG , directed = F, vertices = NULL)
+print(network_ARG_ARG, e=TRUE, v=TRUE)
+plot(network_ARG_ARG)
+# Count the number of degree for each node (used for scaling of nodes in plot function)
+deg.ARG <- degree(network_ARG_ARG, mode="all")
+
+network_graph_ARG_ARG<- 
+  plot(
+  network_ARG_ARG,
+  layout = layout.fruchterman.reingold,
+  main = "ARG-ARG co-occurrence network",
+  vertex.size = deg.ARG*4,
+  vertex.color = "pink",
+  vertex.frame.color = "darkgray",
+  vertex.shape = "sphere",
+  vertex.label = V(network_ARG_ARG)$name, # names of the nodes
+  vertex.label.family = "sans",
+  vertex.label.font = 2,            # Font of node names
+  vertex.label.cex = 1, 
+  vertex.label.dist = 0,
+  vertex.label.color = "black",     # Color of node names
+  color = ifelse(ARG_ARG_co_occurrence$rho <= 0,"#FF0000","#00FF00"), # if rho is negative then colour connecting line is red, if rho is positive then connecting line is green
+  width = 20, # if p.adj is <0.00001 then width of edge is 5, if p.adj is > 0.00001 then width of edge is 1
+  lty = ifelse(ARG_ARG_co_occurrence$p.adjust <= 0.00001, "solid", "dashed"),
+  label = NA, # no edge labels wanted
+  curved = TRUE) # instead of straight edges, use curved edges
+# count number of nodes and edges in the network
+vcount(network_ARG_ARG)
+ecount(network_ARG_ARG)
+# Export graph as graphml 
+write.graph(network_ARG_ARG, "Output_files//Co-occurrence_networks//network_ARG_ARG_graphml_file.graphml", format= "graphml") # Now import this file into gephi for graph visualisation and creation of networks here
+
+
+# Bacteria-ARG
+edges_bacteria_ARG <- data.frame(from = bact_ARG_co_occurrence$taxa.X, to = bact_ARG_co_occurrence$taxa.Y) 
+network_bacteria_ARG <- graph_from_data_frame(d= edges_bacteria_ARG , directed = F, vertices = NULL)
+print(network_bacteria_ARG, e=TRUE, v=TRUE)
+plot(network_bacteria_ARG)
+# Count the number of degree for each node (used for scaling of nodes in plot function)
+deg.bac.ARG <- degree(network_bacteria_ARG, mode="all")
+
+network_graph_bact_ARG <- 
+  plot(
+  network_bacteria_ARG,
+  layout = layout.fruchterman.reingold,
+  main = "bacteria-ARG co-occurrence network",
+  vertex.size = deg.ARG*6,
+  vertex.color = "grey",
+  vertex.frame.color = "darkgray",
+  vertex.shape = "sphere",
+  vertex.label = V(network_bacteria_ARG)$name, # names of the nodes
+  vertex.label.family = "sans",
+  vertex.label.font = 2,            # Font of node names
+  vertex.label.cex = 1, 
+  vertex.label.dist = 0,
+  vertex.label.color = "black",     # Color of node names
+  color = ifelse(bact_ARG_co_occurrence$rho <= 0,"#FF0000","#00FF00"), # if rho is negative then colour connecting line is red, if rho is positive then connecting line is green
+  width = 20, # if p.adj is <0.00001 then width of edge is 5, if p.adj is > 0.00001 then width of edge is 1
+  lty = ifelse(bact_ARG_co_occurrence$p.adjust <= 0.00001, "solid", "dashed"),
+  label = NA, # no edge labels wanted
+  curved = TRUE) # instead of straight edges, use curved edges
+# count number of nodes and edges in the network
+vcount(network_bacteria_ARG)
+ecount(network_bacteria_ARG)
+# Export graph as graphml 
+write.graph(network_bacteria_ARG, "Output_files//Co-occurrence_networks//network_bacteria_ARG_graphml_file.graphml", format= "graphml") # Now import this file into gephi for graph visualisation and creation of networks here
+
+
+# Combined ARG-ARG & bacteria-ARG correlations
+edges_combined <- data.frame(from = combined_co_occurrence$taxa.X, to = combined_co_occurrence$taxa.Y)
+network_combined <- graph_from_data_frame(d = edges_combined, directed = FALSE, vertices = NULL)
+# Count the number of degree for each node (used for scaling of nodes in the plot function)
+deg_combined <- degree(network_combined, mode = "all")
+
+network_graph_combined <- 
+  plot(
+    network_combined,
+    layout = layout.fruchterman.reingold,
+    main = "Combined Co-occurrence Network",
+    vertex.size = deg_combined * 4,
+    vertex.color = "pink",
+    vertex.frame.color = "darkgray",
+    vertex.shape = "sphere",
+    vertex.label = V(network_combined)$name, # names of the nodes
+    vertex.label.family = "sans",
+    vertex.label.font = 2,            # Font of node names
+    vertex.label.cex = 1, 
+    vertex.label.dist = 0,
+    vertex.label.color = "black",     # Color of node names
+    color = ifelse(combined_co_occurrence$rho <= 0, "#FF0000", "#00FF00"), # if rho is negative then the connecting line is red, if rho is positive then the connecting line is green
+    width = ifelse(combined_co_occurrence$p.adjust <= 0.00001, 5, 1), # if p.adj is <0.00001 then the width of the edge is 5, if p.adj is > 0.00001 then the width of the edge is 1
+    lty = ifelse(combined_co_occurrence$p.adjust <= 0.00001, "solid", "dashed"),
+    label = NA, # no edge labels wanted
+    curved = TRUE) # instead of straight edges, use curved edges
+# Count the number of nodes and edges in the network
+vcount(network_combined)
+ecount(network_combined)
+# Export the graph as a graphml file
+write.graph(network_combined, "Output_files//Co-occurrence_networks//network_combined_graphml_file.graphml", format = "graphml")
+# Import the graphs into Gephi for network visualization and further analysis.
+```
