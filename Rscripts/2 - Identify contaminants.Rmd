@@ -6,7 +6,6 @@ author: "b.cornuhewitt@uu.nl"
 ```{r}
 library(decontam); library(phyloseq); library(ggplot2)
 ```
-
 # Check for contaminants in the dataset
 ```{r}
 ps <- readRDS("../Output_files/Phyloseq_objects/4_COPD_resistome_phyloseq_object_rarefied_FPKM.Rds")
@@ -36,7 +35,6 @@ plot_frequency(ps, taxa_names(ps)[c(1,16)], conc="correctedDNAinput") + xlab("co
 # Inspecting more of the ARGs that were classified as contaminants - to make sure they look like what we expect: 
 set.seed(100)
 plot_frequency(ps,taxa_names(ps)[sample(which(contamdf.freq$contaminant),6)], conc="correctedDNAinput") + xlab("correctedDNAinput")
-
 
 # Identify Contaminants - Prevalence method 
 # Since the likelihood of detecting any given contaminant sequence feature will be higher in the blanks than in true samples we can use this method.
