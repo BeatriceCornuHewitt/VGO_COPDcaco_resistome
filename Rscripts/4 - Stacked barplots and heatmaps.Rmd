@@ -97,6 +97,9 @@ bar_graphs_absolute <- function(physeq, var1 = "ungrouped", level, displayx = 10
   }
 }
 
+# Agglomerate at the AMR class level
+AMRclass_aggl <- tax_glom(ps, taxrank = rank_names(ps)[1]) # Rank 1 = ARG class
+
 # COPD, control and blanks
 AMRclass_absolute_bars_groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl, "copdcaco", "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
@@ -110,7 +113,7 @@ AMRclass_absolute_bars_groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl, "co
         legend.position = "right") +
   scale_x_discrete(labels = c("Control", "COPD", "Blank"))
 
-ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass.absolute.bars_groupedcopdcaco.svg", plot = AMRclass.absolute.bars_groupedcopdcaco)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass_absolute_bars_groupedcopdcaco.svg", plot = AMRclass_absolute_bars_groupedcopdcaco)
 
 # COPD and control
 n_colors <- length(unique(AMRclass_absolute_bars_copd$data$ARG_class))
@@ -123,7 +126,7 @@ fill_colours <- c("#f8766d","#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#
 # Convert copdcaco to COPD and control 
 AMRclass_aggl_noblanks@sam_data$copdcaco <- ifelse(AMRclass_aggl_noblanks@sam_data$copdcaco == 0, "Control", "COPD")
 
-AMRclass_aggl_noblanks.groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl_noblanks, "copdcaco", level = "ARG_class") +
+AMRclass_aggl_noblanks_groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl_noblanks, "copdcaco", level = "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
   scale_fill_manual(values = fill_colours) +  # Use the extracted colors
   labs(fill = "AMR class") +
@@ -135,52 +138,51 @@ AMRclass_aggl_noblanks.groupedcopdcaco <- bar_graphs_absolute(AMRclass_aggl_nobl
         legend.text = element_text(size = 15),
         legend.position = "right")
 
-ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass_aggl_noblanks.groupedcopdcaco.svg", plot = AMRclass_aggl_noblanks.groupedcopdcaco)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/AMRclass_aggl_noblanks_groupedcopdcaco.svg", plot = AMRclass_aggl_noblanks_groupedcopdcaco)
 
 ```
 ## Relative abundances
 ### AMR class
 #### Individual sample bars
 ```{r}
-AMRclass_aggl <- tax_glom(Final.ps, taxrank = rank_names(Final.ps)[1]) # Rank 1 = ARG class
 # Make counts relative
-AMRclass.relative <- transform_sample_counts(AMRclass_aggl, function(x) x / sum(x) * 100)
+AMRclass_relative <- transform_sample_counts(AMRclass_aggl, function(x) x / sum(x) * 100)
 
 # COPD
-AMRclass.relative.copd <- AMRclass.relative
-AMRclass.relative.copd <- prune_samples(sample_data(AMRclass.relative.copd)$copdcaco == "1", AMRclass.relative.copd)
+AMRclass_relative_copd<- AMRclass_relative
+AMRclass_relative_copd<- prune_samples(sample_data(AMRclass_relative_copd)$copdcaco == "1", AMRclass_relative_copd)
 # Make plot 
-AMRclass.relative.bars.copd <- plot_bar(AMRclass.relative.copd, fill = "ARG_class") +
+AMRclass_relative_bars_copd <- plot_bar(AMRclass_relative_copd, fill = "ARG_class") +
   labs(title = "COPD Only") +
   theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8)) 
 # Save plot
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.copd.svg", plot = AMRclass.relative.bars.copd)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative_bars_copd.svg", plot = AMRclass_relative_bars_copd)
 
 # Controls
-AMRclass.relative.control <- AMRclass.relative
-AMRclass.relative.control <- prune_samples(sample_data(AMRclass.relative.control)$copdcaco == "0", AMRclass.relative.control)
+AMRclass_relative_control <- AMRclass_relative
+AMRclass_relative_control <- prune_samples(sample_data(AMRclass_relative_control)$copdcaco == "0", AMRclass_relative_control)
 # Make plot 
-AMRclass.relative.bars.control <- plot_bar(AMRclass.relative.control, fill = "ARG_class") +
+AMRclass_relative_bars_control <- plot_bar(AMRclass_relative_control, fill = "ARG_class") +
   labs(title = "Control Only") +
   theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
 # Save plot
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.control.svg", plot = AMRclass.relative.bars.control)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative_bars_control.svg", plot = AMRclass_relative_bars_control)
 
 # Blanks
-AMRclass.relative.blanks <- AMRclass.relative
-AMRclass.relative.blanks <- prune_samples(sample_data(AMRclass.relative.blanks)$copdcaco == "blanc", AMRclass.relative.blanks)
+AMRclass_relative_blanks <- AMRclass_relative
+AMRclass_relative_blanks <- prune_samples(sample_data(AMRclass_relative_blanks)$copdcaco == "blanc", AMRclass_relative_blanks)
 # Make plot 
-AMRclass.relative.bars.blanks <- plot_bar(AMRclass.relative.blanks, fill = "ARG_class") +
+AMRclass_relative.bars.blanks <- plot_bar(AMRclass_relative_blanks, fill = "ARG_class") +
   labs(title = "Blanks Only") +
   theme(axis.text.x = element_text(angle = 270, vjust = 0.4, hjust = 0, size = 8))
 # Save plot
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.blanks.svg", plot = AMRclass.relative.bars.blanks)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative.bars.blanks.svg", plot = AMRclass_relative.bars.blanks)
 
 # Combine plots using patchwork
 combined_plots_relative <- (
-  AMRclass.relative.bars.copd |
-  AMRclass.relative.bars.control |
-  AMRclass.relative.bars.blanks
+  AMRclass_relative_bars_copd |
+  AMRclass_relative_bars_control |
+  AMRclass_relative.bars.blanks
 )
 
 # Set a common y-axis label
@@ -193,23 +195,24 @@ COPDcontrolblank_plots_relative <- combined_plots_relative +
 ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/COPDcontrolblank_plots_relative.svg", plot = COPDcontrolblank_plots_relative)
 
 # COPD, control and blanks all in one plot
-AMRclass.relative.bars <- plot_bar( AMRclass.relative, fill="ARG_class") +
+AMRclass_relative.bars <- plot_bar( AMRclass_relative, fill="ARG_class") +
     labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
-AMRclass.relative.bars + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=8 ) )
+AMRclass_relative.bars + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=8 ) )
 # Save as svg
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.svg", plot = AMRclass.relative.bars)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative.bars.svg", plot = AMRclass_relative.bars)
 
 # COPD and controls all in one plot
-blancs <- c("veldbl16", "veldbl3", "veldbl5")
-AMRclass.relative.noblanks <- AMRclass.relative
-AMRclass.relative.noblanks <-  prune_samples(!sample_names(AMRclass.relative)%in%blancs, AMRclass.relative)
-AMRclass.relative.noblanks;AMRclass.relative 
+blanks <- c("veldbl16", "veldbl3", "veldbl5")
+AMRclass_relative_noblanks <- AMRclass_relative
+AMRclass_relative_noblanks <-  prune_samples(!sample_names(AMRclass_relative) %in% blanks, AMRclass_relative)
+AMRclass_relative_noblanks;AMRclass_relative 
+
 # Create plot
-AMRclass.relative.bars.noblanks <- plot_bar(AMRclass.relative.noblanks, fill="ARG_class") +
+AMRclass_relative_bars_noblanks <- plot_bar(AMRclass_relative_noblanks, fill="ARG_class") +
     labs( title="Total rarefied, gene length corrected and 16S qPCR corrected resistome relative abundance", x="Sample", y="Abundance (%)") 
-AMRclass.relative.bars.noblanks + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=5 ) )
+AMRclass_relative_bars_noblanks + theme( axis.text.x = element_text( angle=270, vjust=0.4, hjust=0, size=5 ) )
 # Save plot
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars.noblanks.svg", plot = AMRclass.relative.bars.noblanks)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative_bars_noblanks.svg", plot = AMRclass_relative_bars_noblanks)
 ```
 #### Grouped bars
 ```{r}
@@ -248,16 +251,16 @@ n_colors <- length(unique(AMRclass_absolute_bars_copd$data$ARG_class))
 color_palette <- viridis(n_colors)
 
 # Remove blanks from dataset
-AMRclass.relative.noblanks <- AMRclass.relative
-AMRclass.relative.noblanks <- prune_samples(!sample_data(AMRclass.relative.noblanks)$copdcaco == "blanc", AMRclass.relative.noblanks)
+AMRclass_relative_noblanks <- AMRclass_relative
+AMRclass_relative_noblanks <- prune_samples(!sample_data(AMRclass_relative_noblanks)$copdcaco == "blanc", AMRclass_relative_noblanks)
 
 # Extract the fill colours from the previous plots to match
 fill_colours <- c("#f8766d","#cd9600","#7cae00","#00be67","#00bfc4","#00a9ff","#c77cff","#ff61cc")
 
 # Relabel copdcaco
-AMRclass.relative.noblanks@sam_data$copdcaco <- ifelse(AMRclass_aggl_noblanks@sam_data$copdcaco == 0, "Control", "COPD")
+AMRclass_relative_noblanks@sam_data$copdcaco <- ifelse(AMRclass_aggl_noblanks@sam_data$copdcaco == 0, "Control", "COPD")
 
-AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class") +
+AMRclass_aggl_noblanks_groupedcopdcaco <- bar.graphs.relative(AMRclass_relative_noblanks, "copdcaco", level = "ARG_class") +
   ggtitle("Total rarefied, gene length corrected and 16S qPCR corrected resistome absolute abundance") +
   scale_fill_manual(values = fill_colours) +  # Use the extracted colors
   labs(fill = "AMR class") +
@@ -269,7 +272,7 @@ AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.
         legend.text = element_text(size = 15),
         legend.position = "right")
 
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass.relative.bars_groupedcopdcaco.svg", plot = AMRclass.relative.bars_groupedcopdcaco)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/AMRclass_relative_bars_groupedcopdcaco.svg", plot = AMRclass_relative_bars_groupedcopdcaco)
 ```
 ### ARG cluster 
 #### Individual sample bars
@@ -293,21 +296,18 @@ toptaxa <- function( ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE ) {
   return( toplist )
 }
 
-# Remove blanks
-ARGcluster_aggl_no_blanks <- ARGcluster.aggl
-ARGcluster_aggl_no_blanks <- prune_samples(!sample_data(ARGcluster_aggl_no_blanks)$copdcaco == "blanc", ARGcluster_aggl_no_blanks)
-
-# New ps object which holds only the 10 most abundant ARGs (for COPD and control samples)
-top10_ARGclusters_overall<- toptaxa(ARGcluster.aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+# Ps agglomerated at ARG cluster level and blanks removed = ps_aggl_noblanks
+# Create new ps with only the 10 most abundant ARGs (for COPD, control & blanks) 
+top10_ARGclusters_overall <- toptaxa(ps_aggl, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10_ARGclusters_overall
-
-top10_ARGclusters_overall_noblanks<- toptaxa(ARGcluster_aggl_no_blanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+# Create new ps with only the 10 most abundant ARGs (for COPD, control & blanks) 
+top10_ARGclusters_overall_noblanks<- toptaxa(ps_aggl_noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10_ARGclusters_overall_noblanks
 
 # calculate Total Abundance
-total_abundance <- sum(taxa_sums(ARGcluster_aggl_no_blanks))
+total_abundance <- sum(taxa_sums(ps_aggl_noblanks))
 # Sum Abundances of Top-10 Taxa
-top_taxa_abundance <- sum(taxa_sums(ARGcluster_aggl_no_blanks)[top10_ARGclusters_overall_noblanks])
+top_taxa_abundance <- sum(taxa_sums(ps_aggl_noblanks)[top10_ARGclusters_overall_noblanks])
 # Calculate Proportion
 print(top_taxa_abundance / total_abundance)
 
@@ -320,7 +320,7 @@ top10_ARGclusters_control<- toptaxa(control_ps, rank="ARGCluster", top=10, sampl
 top10_ARGclusters_control
 
 # Present as actual ARG cluster names 
-tt <- data.frame(tax_table(ARGcluster_aggl))
+tt <- data.frame(tax_table(ps_aggl_noblanks))
 # extract the names of the ARGCluster column where the row names of tt match the taxa present in the top10.ARGclusters.noblanks, top10_ARGclusters_COPD and top10_ARGclusters_control
 top10clusternames_noblanks <- tt$ARGCluster[ row.names(tt) %in% top10_ARGclusters_overall_noblanks] 
 top10clusternames_copd <- tt$ARGCluster[ row.names(tt) %in% top10_ARGclusters_COPD]
@@ -328,13 +328,13 @@ top10clusternames_control <- tt$ARGCluster[ row.names(tt) %in% top10_ARGclusters
 
 # Create a new ps object which holds only the 10 most abundant ARGs (for all COPD and control samples)
 desired_taxa_names <- top10_ARGclusters_overall_noblanks
-taxa_to_keep <- taxa_names(ARGcluster_aggl_no_blanks) %in% desired_taxa_names
-Final_ps_top10ARGClusters <- prune_taxa(taxa_to_keep, ARGcluster_aggl_no_blanks)
+taxa_to_keep <- taxa_names(ps_aggl_noblanks) %in% desired_taxa_names
+Final_ps_top10ARGClusters <- prune_taxa(taxa_to_keep, ps_aggl_noblanks)
 Final_ps_top10ARGClusters@otu_table
 colnames(Final_ps_top10ARGClusters@otu_table)
 top10_ARGclusters_overall_noblanks
 
-Resistome_ps_noblanks.names <- Resistome_ps_noblanks
+Resistome_ps_noblanks_names <- ps_aggl_noblanks
 colnames(Final_ps_top10ARGClusters@otu_table) <- top10clusternames_noblanks
 rownames(Final_ps_top10ARGClusters@tax_table) <- top10clusternames_noblanks
 
@@ -369,15 +369,15 @@ bar.graphs2 <- function(physeq, var1 = "ungrouped", level, displayx = 10, filety
 }
 
 # Create a new phyloseq object with only the top 10 ARG clusters
-ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(Final_ps_top10ARGClusters), decreasing = TRUE))[1:10], Final_ps_top10ARGClusters)
+ARGcluster_top10 <- prune_taxa(names(sort(taxa_sums(Final_ps_top10ARGClusters), decreasing = TRUE))[1:10], Final_ps_top10ARGClusters)
 
 fill_colours10 <- c("#cc3311", "#4a86e8", "#ff9900", "#669966", "#33bbee", "#c77cff", "#bb5566", "#003399", "#ff33cc", "#ffcc00")
 
 # Generate the stacked barplot at the top 10 ARG cluster level
-ARGcluster.top10@sam_data$copdcaco <- revalue(ARGcluster.top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
+ARGcluster_top10@sam_data$copdcaco <- revalue(ARGcluster_top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
 suppressWarnings(library(cowplot))
 theme_set(theme_cowplot())
-ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
+ARGcluster_barchart <- bar.graphs2(ARGcluster_top10, "copdcaco", "ARGCluster") +
   ggtitle("Relative Abundance of Top 10 ARG Clusters in COPD and Control Groups") +
     scale_fill_manual(values = fill_colours10) +  # Use your custom color palette
   labs(fill = "ARG Cluster") +
@@ -388,9 +388,9 @@ ARGcluster.barchart <- bar.graphs2(ARGcluster.top10, "copdcaco", "ARGCluster") +
         legend.title = element_text(size = 15),
         legend.text = element_text(size = 15),
         legend.position = "right") 
-ARGcluster.barchart
+ARGcluster_barchart
 
-ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/ARGcluster.barchart.svg", plot = ARGcluster.barchart)
+ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/ARGcluster_barchart.svg", plot = ARGcluster_barchart)
 ```
 # Heatmaps
 ## ARG level (unclustered)
@@ -398,38 +398,38 @@ ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/ARGcl
 # Extract abundance matrix
 ARGs <- as(otu_table(ps), "matrix")
 # transform into a data frame
-ARG.dataframe <-as.data.frame(ARGs)
+ARG_dataframe <-as.data.frame(ARGs)
 
 # Transform the raw counts of reads to proportions of total ARGs in each sample 
-ARG.dataframe.prop <- ARG.dataframe/rowSums(ARG.dataframe)
-ARG.dataframe.prop
+ARG_dataframe_prop <- ARG_dataframe/rowSums(ARG_dataframe)
+ARG_dataframe_prop
 # Calculate the Bray-Curtis dissimilarity matrix on the full dataset
-ARG.BCdist <- vegdist(ARG.dataframe.prop, method = "bray")
+ARG_BCdist <- vegdist(ARG_dataframe_prop, method = "bray")
 # Perform hierarchical cluster analysis using the BC dissimilarities 
 # Each sample is assigned to its own cluster and then the algorithm proceeds iteratively, at each stage joining the two most similar clusters, continuing until there is just a single cluster.
-sample.clust <- hclust(ARG.BCdist, "aver")
-# make the heatmap with clustering of the samples (rows) (Rowv = as.dendrogram(sample.clust))
+sample_clust <- hclust(ARG_BCdist, "aver")
+# make the heatmap with clustering of the samples (rows) (Rowv = as.dendrogram(sample_clust))
 # Note that the samples are not in the same order as that in the matrix - heatmap() reorders both variables and observations using the BC clustering algorithm: it computes the distance between each pair of rows and columns and try to order them by similarity.
-heatmap_ARGlevel_clustered <- heatmap(as.matrix(ARG.dataframe.prop), Rowv = as.dendrogram(sample.clust), Colv = NA, margins = c(10, 3))
+heatmap_ARGlevel_clustered <- heatmap(as.matrix(ARG_dataframe_prop), Rowv = as.dendrogram(sample_clust), Colv = NA, margins = c(10, 3))
 plot(heatmap_ARGlevel_clustered)
 # Add additional dendogram (on the columns) to heatmap 
 # Calculate the Bray-Curtis dissimilarity matrix on ARGs in the dataset
-ARG.BCdist.t <- vegdist(t(ARG.dataframe.prop), method = "bray") # We transpose the data frame so samples are now in columns
+ARG_BCdist_t <- vegdist(t(ARG_dataframe_prop), method = "bray") # We transpose the data frame so samples are now in columns
 # Perform hierarchical cluster analysis using the BC dissimilarities between the ARGs (columns in dataset)
-col.clust <- hclust(ARG.BCdist.t, "aver")
+col_clust <- hclust(ARG_BCdist_t, "aver")
 
 # create the heatmap with row and column dendograms
-heatmap_ARGlevel_clustered_rowcolumn <- heatmap(as.matrix(ARG.dataframe.prop), Rowv = as.dendrogram(sample.clust), Colv = as.dendrogram(col.clust), margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
+heatmap_ARGlevel_clustered_rowcolumn <- heatmap(as.matrix(ARG_dataframe_prop), Rowv = as.dendrogram(sample_clust), Colv = as.dendrogram(col_clust), margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
 
-# Add colour code to rows to visualise whether COPD/controls/blanks cluster together 
-metadata.final.ps <- sample_data(Final.ps)
-COPDcontrolblank <- metadata.final.ps$copdcaco 
+# Add colour code to rows to visualise whether COPD/controls/blanks cluster together
+metadata_final_ps <- sample_data(ps)
+COPDcontrolblank <- metadata_final_ps$copdcaco 
 COPDcontrolblank<- replace(COPDcontrolblank, which(COPDcontrolblank == "0"), "blue")
 COPDcontrolblank<-replace(COPDcontrolblank, which(COPDcontrolblank == "1"), "red")
 COPDcontrolblank<-replace(COPDcontrolblank, which(COPDcontrolblank == "blanc"),"green")
 
 # Add these colour codes to the heatmap 
-heatmap_ARGlevel_clustered_colour1 <- heatmap(as.matrix(ARG.dataframe.prop), Rowv = as.dendrogram(sample.clust), Colv = as.dendrogram(col.clust), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
+heatmap_ARGlevel_clustered_colour1 <- heatmap(as.matrix(ARG_dataframe_prop), Rowv = as.dendrogram(sample_clust), Colv = as.dendrogram(col_clust), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "ARGs", ylab = "SampleIDs", main = "Hierarchical clustering heatmap")
 ```
 ## ARG cluster level 
 ```{r}
@@ -437,67 +437,67 @@ heatmap_ARGlevel_clustered_colour1 <- heatmap(as.matrix(ARG.dataframe.prop), Row
 # Extract abundance matrix from cluster 90 agglomerated ps object
 ARGclustertable <- as(otu_table(ps_aggl), "matrix")
 # transform into a data frame
-ARGcluster.dataframe <- as.data.frame(ARGclustertable)
-ARGcluster.dataframe
+ARGcluster_dataframe <- as.data.frame(ARGclustertable)
+ARGcluster_dataframe
 # Examine actual cluster 90 names and names assigned in the ps object
 ps_aggl@tax_table[,6]
 # column names are (specific) ARG names, agglomeration is correct (lowest level is ARG cluster) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
-colnames(ARGcluster.dataframe) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
+colnames(ARGcluster_dataframe) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
 # Check the renaming has been performed correctly
-colnames(ARGcluster.dataframe)
+colnames(ARGcluster_dataframe)
 # transform the raw counts of reads to proportions of total ARG clusters in each sample 
-ARGcluster.dataframe.prop <- ARGcluster.dataframe/rowSums(ARGcluster.dataframe)
+ARGcluster_dataframe_prop <- ARGcluster_dataframe/rowSums(ARGcluster_dataframe)
 # Examine the dataframe 
-ARGcluster.dataframe.prop
+ARGcluster_dataframe_prop
 # calculate the Bray-Curtis dissimilarity matrix on the full dataset
-ARGCluster.BCdist <- vegdist(ARGcluster.dataframe.prop, method = "bray")
+ARGCluster_BCdist <- vegdist(ARGcluster_dataframe_prop, method = "bray")
 # perform hierarchical cluster analysis using the BC dissimilarities 
 # each sample is assigned to its own cluster and then the algorithm proceeds iteratively, at each stage joining the two most similar clusters, continuing until there is just a single cluster.
-ARGCluster.clust <- hclust(ARGCluster.BCdist, "aver")
+ARGCluster_clust <- hclust(ARGCluster_BCdist, "aver")
 # Create a heatmap at the ARG cluster level
-heatmap.ARGClusterlevel <- heatmap(as.matrix(ARGcluster.dataframe.prop), Rowv = as.dendrogram(ARGCluster.clust), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "ARGCluster", ylab = "SampleIDs", main = "Hierarchical clustering heatmap at 90% ARG cluster level")
+heatmap_ARGClusterlevel <- heatmap(as.matrix(ARGcluster_dataframe_prop), Rowv = as.dendrogram(ARGCluster_clust), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "ARGCluster", ylab = "SampleIDs", main = "Hierarchical clustering heatmap at 90% ARG cluster level")
 # Note that the samples are not in the same order as that in the matrix - heatmap() reorders both variables and observations using the BC clustering algorithm: it computes the distance between each pair of rows and columns and try to order them by similarity.
 
 
 # Using tutorial: https:/slowkow.com/notes/pheatmap-tutorial/
 # Use the data frame which I created previously for ARG cluster level 
-ARGcluster.dataframe.prop
+ARGcluster_dataframe_prop
 # convert ARG Cluster df to matrix form - this is needed for pheatmap function
-ARGcluster.prop.mat <- as.matrix(ARGcluster.dataframe.prop)
+ARGcluster_prop_mat <- as.matrix(ARGcluster_dataframe_prop)
 # check the matrix to see it is formulated correctly
-rownames(ARGcluster.prop.mat)
-colnames(ARGcluster.prop.mat)
+rownames(ARGcluster_prop_mat)
+colnames(ARGcluster_prop_mat)
 # create a new df with column for copdcaco status - in order to label the heatmap by sample type (colour coding later on)
-ARG.cluster.df.copdcaco <- ARGcluster.dataframe.prop
-ARG.cluster.df.copdcaco$copdcaco <- Final.ps@sam_data$copdcaco
-copdcaco_df <- data.frame("Population" = ARG.cluster.df.copdcaco$copdcaco)
+ARGcluster_df_copdcaco <- ARGcluster_dataframe_prop
+ARGcluster_df_copdcaco$copdcaco <- ps@sam_data$copdcaco
+copdcaco_df <- data.frame("Population" = ARGcluster_df_copdcaco$copdcaco)
 
 copdcaco_df$Population <- ifelse(copdcaco_df$Population == '1', 'COPD',
                                ifelse(copdcaco_df$Population == '0', 'Control',
                                       ifelse(copdcaco_df$Population == 'blanc', 'Blank', copdcaco_df$Population
 )))
-rownames(copdcaco_df) = rownames(ARG.cluster.df.copdcaco) # name matching
+rownames(copdcaco_df) = rownames(ARGcluster_df_copdcaco) # name matching
 # specify the colours wanted as the key (annotation_colours argument in pheatmap function) - red-COPD, blue-control, green-blank
 
-row.colors = list(Population = c("COPD" = "orange", "Control" = "cornflowerblue", "Blank"= "green3"))
+row_colors = list(Population = c("COPD" = "orange", "Control" = "cornflowerblue", "Blank"= "green3"))
 
 # Specify BC clustering for pheatmap 
-BCdist.rows <- vegdist(ARGcluster.dataframe.prop, method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
-BCdist.cols <- vegdist(t(ARGcluster.dataframe.prop), method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
-pheatmap(ARGcluster.prop.mat, cluster_rows=FALSE, cluster_cols=FALSE)
+BCdist_rows <- vegdist(ARGcluster_dataframe_prop, method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
+BCdist_cols <- vegdist(t(ARGcluster_dataframe_prop), method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
+pheatmap(ARGcluster_prop_mat, cluster_rows=FALSE, cluster_cols=FALSE)
 # Create heatmap including all ARG clusters. BC distance clustering, colour coding for COPD/control/blank samples on y-axis
 ARG_cluster_heatmap <- pheatmap(
-  mat = ARGcluster.prop.mat,
+  mat = ARGcluster_prop_mat,
   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https:/www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour), this one is colour blind friendly
   border_color = "grey60",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  clustering_distance_rows = BCdist.rows, # using the BC values calculated previously 
-  clustering_distance_cols = BCdist.cols ,
+  clustering_distance_rows = BCdist_rows, # using the BC values calculated previously 
+  clustering_distance_cols = BCdist_cols ,
   show_colnames = TRUE,
   show_rownames = TRUE,
   annotation_row = copdcaco_df, # annotates COPD/control/blanks and colour codes them - I want to change the colours though to red COPD, blue control, green blank
-  annotation_colors = row.colors, # change colours to orange COPD, blue control, green blank 
+  annotation_colors = row_colors, # change colours to orange COPD, blue control, green blank 
   drop_levels = TRUE,
   fontsize= 15,
   fontsize_row = 10,
@@ -513,60 +513,60 @@ ggsave("../Output_files/Heatmaps/ARG_cluster_heatmap.svg", ARG_cluster_heatmap, 
 # Create a heatmap on the AMR class level
 AMRclasstable <- as(otu_table(AMRclass_aggl), "matrix")
 # transform into a data frame
-AMRclass.dataframe <-as.data.frame(AMRclasstable)
-AMRclass.dataframe
+AMRclass_dataframe <- as.data.frame(AMRclasstable)
+AMRclass_dataframe
 # column names are (specific) ARG names, agglomeration is correct (lowest level is AMR class) but col names are not correct - I will rename the column names to the AMR classes for presentation in the heatmap
-colnames(AMRclass.dataframe) <- c("Aminoglycoside", "Beta-Lactam", "Macrolide", "Tetracycline", "Phenicol", "Sulphonamide", "Trimethoprim", "Fusidicacid")
+colnames(AMRclass_dataframe) <- c("Aminoglycoside", "Beta-Lactam", "Macrolide", "Tetracycline", "Phenicol", "Sulphonamide", "Trimethoprim", "Fusidicacid")
 # Check the renaming has been performed correctly
-AMRclass.dataframe
-view(AMRclass.dataframe)
+AMRclass_dataframe
+view(AMRclass_dataframe)
 # transform the raw counts of reads to proportions of total AMR class in each sample 
-AMRclass.dataframe.prop <- AMRclass.dataframe/rowSums(AMRclass.dataframe)
+AMRclass_dataframe_prop <- AMRclass_dataframe/rowSums(AMRclass_dataframe)
 # examine the dataframe 
-AMRclass.dataframe.prop
-AMRclass.dataframe.prop[1:3, 1:3]
+AMRclass_dataframe_prop
+AMRclass_dataframe_prop[1:3, 1:3]
 # calculate the Bray-Curtis dissimilarity matrix on the full dataset
-AMRclass.BCdist <- vegdist(AMRclass.dataframe.prop, method = "bray")
+AMRclass_BCdist <- vegdist(AMRclass_dataframe_prop, method = "bray")
 # perform hierarchical cluster analysis using the BC dissimilarities 
 # each sample is assigned to its own cluster and then the algorithm proceeds iteratively, at each stage joining the two most similar clusters, continuing until there is just a single cluster.
-sample.clust2 <- hclust(AMRclass.BCdist, "aver")
+sample_clust2 <- hclust(AMRclass_BCdist, "aver")
 # perform hierarchical cluster analysis using the BC dissimilarities between the AMR classes (columns in dataset)
-AMRclass.clust <- hclust(AMRclass.BCdist, "aver")
+AMRclass_clust <- hclust(AMRclass_BCdist, "aver")
 # Create a heatmap at the AMR class level
-heatmap.AMRclasslevel <- heatmap(as.matrix(AMRclass.dataframe.prop), Rowv = as.dendrogram(sample.clust2), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "AMR class", ylab = "SampleIDs", main = "Hierarchical clustering heatmap at AMR class level")
+heatmap_AMRclasslevel <- heatmap(as.matrix(AMRclass_dataframe_prop), Rowv = as.dendrogram(sample_clust2), RowSideColors = COPDcontrolblank, margins = c(11, 5), xlab = "AMR class", ylab = "SampleIDs", main = "Hierarchical clustering heatmap at AMR class level")
 # Note that the samples are not in the same order as that in the matrix - heatmap() reorders both variables and observations using the BC clustering algorithm: it computes the distance between each pair of rows and columns and try to order them by similarity.
 
 
 # Heatmap at AMR class level (using pheatmap)
-AMRclass.dataframe.prop # use previous df created
+AMRclass_dataframe_prop # use previous df created
 # convert AMR Class df to matrix form - this is needed for pheatmap function
-AMRclass.prop.mat <- as.matrix(AMRclass.dataframe.prop)
+AMRclass_prop_mat <- as.matrix(AMRclass_dataframe_prop)
 # check the matrix to see it is formulated correctly
-rownames(AMRclass.prop.mat)
-colnames(AMRclass.prop.mat)
+rownames(AMRclass_prop_mat)
+colnames(AMRclass_prop_mat)
 # create a new df with column for copdcaco status - in order to label the heatmap by sample type (colour coding later on)
-AMRclass.dataframe.prop.copdcaco <- AMRclass.dataframe.prop
-AMRclass.dataframe.prop.copdcaco$copdcaco <- Final.ps@sam_data$copdcaco
-AMRclass.copdcaco.df<- data.frame("COPD/control/blank" = AMRclass.dataframe.prop.copdcaco$copdcaco)
-rownames(AMRclass.copdcaco.df) = rownames(AMRclass.dataframe.prop.copdcaco) # name matching
+AMRclass_dataframe_prop_copdcaco <- AMRclass_dataframe_prop
+AMRclass_dataframe_prop_copdcaco$copdcaco <- ps@sam_data$copdcaco
+AMRclass_copdcaco_df<- data.frame("COPD/control/blank" = AMRclass_dataframe_prop_copdcaco$copdcaco)
+rownames(AMRclass_copdcaco_df) = rownames(AMRclass_dataframe_prop_copdcaco) # name matching
 # specify the colours wanted as the key (annotation_colours argument in pheatmap function) - red-COPD, blue-control, green-blank
-row.colors.AMRclass = list( COPD.control.blank = c("1" = "#FF0000", "0" = "#0000FF", "blanc"= "#00FF00" ))
+row_colors_AMRclass = list( COPD_control_blank = c("1" = "#FF0000", "0" = "#0000FF", "blanc"= "#00FF00" ))
 # Specify BC clustering for pheatmap - default is euclidean(?)
-AMRclass.BCdist.rows <- vegdist(AMRclass.dataframe.prop, method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
-AMRclass.BCdist.cols <- vegdist(t(AMRclass.dataframe.prop), method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
+AMRclass_BCdist_rows <- vegdist(AMRclass_dataframe_prop, method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
+AMRclass_BCdist_cols <- vegdist(t(AMRclass_dataframe_prop), method="bray", binary=FALSE, diag=FALSE, upper=FALSE, na.rm = FALSE)
 # Create heatmap including all ARG clusters. BC distance clustering, colour coding for COPD/control/blank samples on y-axis
 pheatmap(
-  mat = AMRclass.prop.mat,
+  mat = AMRclass_prop_mat,
   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdYlBu")))(100), # see other colour palettes: https:/www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/ (also can change from (10) to another number to change density of colour)
   border_color = "grey60",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  clustering_distance_rows = AMRclass.BCdist.rows, # using the BC values calculated previously 
-  clustering_distance_cols = AMRclass.BCdist.cols ,
+  clustering_distance_rows = AMRclass_BCdist_rows, # using the BC values calculated previously 
+  clustering_distance_cols = AMRclass_BCdist_cols ,
   show_colnames = TRUE,
   show_rownames = TRUE,
-  annotation_row = AMRclass.copdcaco.df, # annotates COPD/control/blanks and colour codes them - I want to change the colours though to red COPD, blue control, green blank
-  annotation_colors = row.colors.AMRclass, # change colours to red COPD, blue control, green blank (see annotat) 
+  annotation_row = AMRclass_copdcaco_df, # annotates COPD/control/blanks and colour codes them - I want to change the colours though to red COPD, blue control, green blank
+  annotation_colors = row_colors_AMRclass, # change colours to red COPD, blue control, green blank (see annotat) 
   drop_levels = TRUE,
   fontsize= 20,
   fontsize_row = 10,
@@ -606,7 +606,7 @@ bar.graphs.relative <- function(physeq, var1 = "ungrouped", level, displayx = 10
 }
 
 # AMR class 
-AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.noblanks, "copdcaco", level = "ARG_class")+
+AMRclass_aggl_noblanks_groupedcopdcaco <- bar.graphs.relative(AMRclass_relative_noblanks, "copdcaco", level = "ARG_class")+
   scale_fill_manual(values = fill_colours) +  # Use the extracted colors
   labs(fill = "AMR class", title = NULL) +
   theme(axis.text = element_text(size = 15),
@@ -616,18 +616,18 @@ AMRclass_aggl_noblanks.groupedcopdcaco <- bar.graphs.relative(AMRclass.relative.
         legend.text = element_text(size = 15),
         legend.position = "right")
 
-AMRclass_aggl_noblanks.groupedcopdcaco
+AMRclass_aggl_noblanks_groupedcopdcaco
 
 # ARG cluster level 
 # Prune ps object to contain only the top 10 ARG clusters
-ARGcluster.top10 <- prune_taxa(names(sort(taxa_sums(Final.ps.top10ARGClusters), decreasing = TRUE))[1:10], Final.ps.top10ARGClusters)
+ARGcluster_top10 <- prune_taxa(names(sort(taxa_sums(Final_ps_top10ARGClusters), decreasing = TRUE))[1:10], Final_ps_top10ARGClusters)
 
 fill_colours10 <- c("#cc3311", "#4a86e8", "#ff9900", "#669966", "#33bbee", "#c77cff", "#bb5566", "#003399", "#ff33cc", "#ffcc00")
 
-ARGcluster.top10@sam_data$copdcaco <- revalue(ARGcluster.top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
+ARGcluster_top10@sam_data$copdcaco <- revalue(ARGcluster_top10@sam_data$copdcaco, c("1"="COPD", "0"= "Control"))
 
 theme_set(theme_cowplot())
-ARG_top10_relative_bar <- bar.graphs.relative(ARGcluster.top10, "copdcaco", level = "ARGCluster")+
+ARG_top10_relative_bar <- bar.graphs.relative(ARGcluster_top10, "copdcaco", level = "ARGCluster")+
   scale_fill_manual(values = fill_colours10) +  # Use the extracted colors
   labs(fill = "ARG Cluster", title = NULL, y = "% of top 10 ARG clusters present")+
   theme(axis.text = element_text(size = 15),
@@ -638,7 +638,7 @@ ARG_top10_relative_bar <- bar.graphs.relative(ARGcluster.top10, "copdcaco", leve
         legend.position = "right")
 
 # Patchwork to join the plots together
-patched_barcharts <- (AMRclass_aggl_noblanks.groupedcopdcaco|ARG_top10_relative_bar)
+patched_barcharts <- (AMRclass_aggl_noblanks_groupedcopdcaco|ARG_top10_relative_bar)
 patched_bar_labelled <- patched_barcharts + plot_annotation(tag_levels = 'a')
 
 ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patched_bar_labelled.svg", width = 14, height = 6, plot = patched_bar_labelled)
@@ -648,7 +648,7 @@ ggsave(filename = "../Output_files/AMR_abundance_plots/Relative_abundances/patch
 # Manuscript plots
 # Compute top10 taxa
 ```{r}
-top10<- toptaxa(Final.ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10<- toptaxa(ps, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10
 ```
 # Figure 2 for manuscript
@@ -842,16 +842,11 @@ ps_plot_bar <- function( ps,
   return(p)
 }
 
-
-# Create colour scheme for plots
-display.brewer.all(colorblindFriendly = TRUE)
-colpalette1 <- rev(brewer.pal(10, "Paired"))
-colpalette2 <- rev(brewer.pal(8, "Set2"))
 ```
 # Absolute abundance plots
 ```{r}
 # ARG cluster level (top 10)
-barplot_abs_ARGcluster <- ps_plot_bar( Final.ps.noblanks, 
+barplot_abs_ARGcluster <- ps_plot_bar( ps_noblanks, 
                         taxrank="ARGCluster", 
                         top=10, 
                         taxglom=TRUE, 
@@ -926,7 +921,7 @@ ggsave(filename = "../Output_files/AMR_abundance_plots/Absolute_abundances/patch
 # Relative abundance 
 ```{r}
 # Convert to relative abundances
-Final.ps.noblanks_rel <- transform_sample_counts(Final.ps.noblanks, function(x) x / sum(x) * 100)
+Final_ps_noblanks_rel <- transform_sample_counts(ps_aggl, function(x) x / sum(x) * 100)
 
 # Define breaks and labels for the y-axis
 y_breaks <- c(25, 50, 75, 100)
@@ -935,7 +930,7 @@ y_labels <- paste0(y_breaks, "%")
 theme_set(theme_cowplot())
 
 # ARG cluster level (top10)
-barplot_RA_ARGcluster <- ps_plot_bar(Final.ps.noblanks_rel, 
+barplot_RA_ARGcluster <- ps_plot_bar(Final_ps_noblanks_rel, 
                                      taxrank="ARGCluster", 
                                      top=10, 
                                      taxglom=TRUE, 
@@ -1013,12 +1008,5 @@ ggsave(
   height = 6, 
   plot = RA_barplots
 )
-
-
-
-
-
-
-
 
 ```
