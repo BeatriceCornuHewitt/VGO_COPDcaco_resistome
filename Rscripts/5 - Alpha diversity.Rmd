@@ -1,17 +1,21 @@
 ---
 title: "5 - Alpha diversity"
-author: "b.cornuhewitt@uu.nl"
+author: "Beatrice Cornu Hewitt"
+date: "`r Sys.time()`"
+output: html_document
 ---
 **
-- Calculate several alpha diversity indices for COPD and control participants, including: Shannon, Simpson’s Evenness, Observed
-- The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers. Observing the data I see that there are a maximum of 7 decimals in the dataset but alpha diversity calculations require whole numbers...
-- I will multiply by 1,000,000,000 in order to remove all these decimals to do the alpha diversity calculations. 
+- Calculate several alpha diversity indices (Shannon, Simpson’s Evenness, Observed) for COPD and control participants
+- The abundance data contains decimals as it has been corrected per gene length, therefore none are whole numbers.
+- There are a maximum of 7 decimals in the dataset but alpha diversity calculations require whole numbers.
+- Multiply data by 1 billion in order to remove all these decimals to do the alpha diversity calculations. 
 **
+
+# Packages
 ```{r}
 library(ggpubr); library(microbiome); library(car)
 ```
-
-# Alpha diversity computations
+# Data
 ```{r}
 ps_noblanks <- readRDS("../Output_files/Phyloseq_objects/4b_COPD_resistome_phyloseq_object_rarefied_FPKM_noblanks.Rds") # This ps object is gene length corrected but not clustered at the 90% identity level
 ps_billion <- ps_noblanks
@@ -20,18 +24,18 @@ head(ps_billion@otu_table@.Data)
 
 # Firstly I will rename the codes "1" & "0" as COPD & control respectively
 ps_billion@sam_data$copdcaco <- ifelse(ps_billion@sam_data$copdcaco == "1", "COPD", "Control")
-
+```
+# Alpha diversity calculations
+```{r}
 # Create tables with alpha diversity measures
-Shannon.table.exp <- microbiome::alpha(ps_billion, (index = "Shannon"), zeroes = TRUE)
-SimpsonEvenness.table.exp <- microbiome::alpha(ps_billion, (index = "simpson"), zeroes = TRUE)
-Observed.table.exp <-  microbiome::alpha(ps_billion, (index = "Observed"), zeroes = TRUE)
+Shannon_table <- microbiome::alpha(ps_billion, (index = "Shannon"), zeroes = TRUE)
+SimpsonEvenness_table <- microbiome::alpha(ps_billion, (index = "simpson"), zeroes = TRUE)
+Observed_table <-  microbiome::alpha(ps_billion, (index = "Observed"), zeroes = TRUE)
 
 # Now add the diversity tables to the metadata
-sample_data(ps_billion)$shannon <- Shannon.table.exp$diversity_shannon
-sample_data(ps_billion)$SimpsonEvenness <- SimpsonEvenness.table.exp$evenness_simpson
-sample_data(ps_billion)$Observed <- Observed.table.exp$observed
-# check whether this has been added to the metadata table
-sample_data(ps_billion) # Yes added all metadata
+sample_data(ps_billion)$shannon <- Shannon_table$diversity_shannon
+sample_data(ps_billion)$SimpsonEvenness <- SimpsonEvenness_table$evenness_simpson
+sample_data(ps_billion)$Observed <- Observed_table$observed
 
 # Check normality of the diversity score distributions
 # Create histograms of diversity scores
@@ -40,15 +44,17 @@ hist(sample_data(ps_billion)$shannon, main="Shannon diversity", xlab="", breaks=
 hist(sample_data(ps_billion)$SimpsonEvenness, main="Simpson evenness diversity", xlab="", breaks=15)
 hist(sample_data(ps_billion)$Observed, main="Observed diversity", xlab="", breaks=15)
 # Statistical check for normality 
-shapiro.test(sample_data(ps_billion)$shannon) # p = 0.06813
-shapiro.test(sample_data(ps_billion)$SimpsonEvenness) # p = 2.226e-05
-shapiro.test(sample_data(ps_billion)$Observed) # p = 0.02141
+shapiro.test(sample_data(ps_billion)$shannon) 
+shapiro.test(sample_data(ps_billion)$SimpsonEvenness) 
+shapiro.test(sample_data(ps_billion)$Observed) 
 # shannon normally distributed, simpson and observed not
 ```
-# Check assumptions for parametric testing
+# COPD case-control 
+## Check assumptions
 ```{r}
 # Extract metadata from phyloseq sam_data and create dataframe
 metadata <- data.frame(ps_billion@sam_data)
+
 # Check normality within each group (COPD case and control) using histograms and QQ plots
 {par(mfrow = c(2, 2))  # Set up a multi-panel plotting layout
 hist(metadata$shannon[metadata$copdcaco == "COPD"], main = "Shannon Diversity (COPD)", xlab = "Shannon Diversity")
@@ -79,24 +85,24 @@ qqline(metadata$Observed[metadata$copdcaco == "Control"])}
 
 
 # Check normality statistically using Shapiro Wilk test
-shapiro.test(metadata$shannon[metadata$copdcaco == "COPD"]) # p-value = 0.5988
-shapiro.test(metadata$shannon[metadata$copdcaco == "Control"]) # p-value = 0.2682
-shapiro.test(metadata$SimpsonEvenness[metadata$copdcaco == "COPD"]) # p-value = 0.0007409
-shapiro.test(metadata$SimpsonEvenness[metadata$copdcaco == "Control"]) # p-value = 0.8515
-shapiro.test(metadata$Observed[metadata$copdcaco == "COPD"]) # p-value = 0.6019
-shapiro.test(metadata$Observed[metadata$copdcaco == "Control"]) # p-value = 0.03313
+shapiro.test(metadata$shannon[metadata$copdcaco == "COPD"]) 
+shapiro.test(metadata$shannon[metadata$copdcaco == "Control"]) 
+shapiro.test(metadata$SimpsonEvenness[metadata$copdcaco == "COPD"])
+shapiro.test(metadata$SimpsonEvenness[metadata$copdcaco == "Control"]) 
+shapiro.test(metadata$Observed[metadata$copdcaco == "COPD"]) 
+shapiro.test(metadata$Observed[metadata$copdcaco == "Control"]) 
 
 # Check homogeneity of variance using Levene's test
-leveneTest(metadata$shannon, metadata$copdcaco) # p-value = 0.9363
-leveneTest(metadata$SimpsonEvenness, metadata$copdcaco)# p-value = 0.002772 **
-leveneTest(metadata$Observed, metadata$copdcaco)# p-value = 0.31
+leveneTest(metadata$shannon, metadata$copdcaco) 
+leveneTest(metadata$SimpsonEvenness, metadata$copdcaco)
+leveneTest(metadata$Observed, metadata$copdcaco)
 
 # Summary of assumption checking: 
 # Shannon: both groups normally distributed, no significant difference in variances between the COPD and Control groups. Conduct t-test between COPD case and control groups
-# Simpson evenness: p-value for the COPD group suggests non-normality, levene's test indicates a significant difference in variances between the COPD and Control groups. Conduct wilcoxon rank sum test between COPD case and control groups
-# Observed: p-value for control group suggests non-normality. Levene's test indicates no significant difference in variances between the COPD and Control groups.Conduct wilcoxon rank sum test between COPD case and control groups
+# Simpson evenness: p-value for the COPD group suggests non-normality, no significant difference in variances between the COPD and Control groups. Conduct wilcoxon rank sum test between COPD case and control groups
+# Observed: p-value for control group suggests non-normality. No significant difference in variances between the COPD and Control groups..Conduct wilcoxon rank sum test between COPD case and control groups
 ```
-# COPD vs control - statistics
+## Statistical tests
 ```{r}
 # t-tests make the following assumptions: 
 # 1: The two samples are independent of one another
@@ -119,7 +125,7 @@ wilcox_simpson # p-value = 0.3671
 wilcox_observed <- wilcox.test(metadata$Observed~metadata$copdcaco)
 wilcox_observed # p-value = 0.1708
 ```
-# Alpha diversity boxplots
+## Boxplots
 ```{r}
 theme_set(theme_cowplot())
 # Create boxplots for COPD & controls 
@@ -183,21 +189,22 @@ Shannon.diversity.plot.pval
 Simpson.diversity.plot.pval
 Observed.diversity.plot.pval
 
-ggsave("Output_files//Alpha_diversity//Shannon_diversity_plot.png", Shannon.diversity.plot, dpi = 1000, width = 10, height = 8)
-ggsave("Output_files//Alpha_diversity//Simpson_diversity_plot.png", Simpson.diversity.plot, dpi = 1000, width = 10, height = 8)
-ggsave("Output_files//Alpha_diversity//Observed_diversity_plot.png", Observed.diversity.plot, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files/Alpha_diversity/Shannon_diversity_plot.png", Shannon.diversity.plot, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files/Alpha_diversity/Simpson_diversity_plot.png", Simpson.diversity.plot, dpi = 1000, width = 10, height = 8)
+ggsave("Output_files/Alpha_diversity/Observed_diversity_plot.png", Observed.diversity.plot, dpi = 1000, width = 10, height = 8)
 ```
 # Livestock exposure
+## Univariable linear models
 ```{r}
-# Now relate alpha diversity with livestock exposure variables
+# Now we assess the impact of various livestock exposure variables on resistome alpha diversity 
 # As all predictor variables are continuous and outcome is continuous too, use a linear regression model
 
 # Run all linear regressions with all exposure proxies, set a p-value threshold and decide from there which are the important parameters to look at further
-alpha_vars <- data.frame(ps_billion@sam_data)
-colnames(alpha_vars)
+metadata <- data.frame(ps_billion@sam_data)
+colnames(metadata)
 # rename copdcaco as 0 and 1 
-alpha_vars$copdcaco <- factor(alpha_vars$copdcaco)
-alpha_vars$copdcaco <- recode_factor(alpha_vars$copdcaco, "COPD" = "1", "Control" = "0")
+metadata$copdcaco <- factor(metadata$copdcaco)
+metadata$copdcaco <- recode_factor(metadata$copdcaco, "COPD" = "1", "Control" = "0")
 
 # Run the linear models
 # Start with Shannon diversity
@@ -218,7 +225,7 @@ for (target in target_vars) {
     # Construct the formula for the linear model
     formula <- as.formula(paste(target, "~", predictor, "+ copdcaco"))
     # Fit the linear model
-    model <- lm(formula, data = alpha_vars)
+    model <- lm(formula, data = metadata)
     # Store the model summary
     model_summary <- summary(model)
     # Print the summary
@@ -244,7 +251,7 @@ for (target_var in target_vars) {
     # Construct the formula for the linear model
     formula <- as.formula(paste(target_var, "~", predictor_var, "+ copdcaco"))
     # Fit the linear model
-    model <- lm(formula, data = alpha_vars)
+    model <- lm(formula, data = metadata)
     # Extract coefficient and p-value for the predictor variable
     coefficient <- coef(summary(model))[predictor_var, "Estimate"]
     p_value <- coef(summary(model))[predictor_var, "Pr(>|t|)"]
@@ -319,70 +326,70 @@ shannon_lm_all
 simpson_lm_all
 observed_lm_all
 
-write.csv(shannon_lm_all, "..//Output_files//Alpha_diversity//shannon_lm_all.csv", row.names = FALSE)
-write.csv(simpson_lm_all, "..//Output_files//Alpha_diversity//simpson_lm_all.csv", row.names = FALSE)
-write.csv(observed_lm_all, "..//Output_files//Alpha_diversity//observed_lm_all.csv", row.names = FALSE)
+write.csv(shannon_lm_all, "../Output_files/Alpha_diversity/shannon_lm_all.csv", row.names = FALSE)
+write.csv(simpson_lm_all, "../Output_files/Alpha_diversity/simpson_lm_all.csv", row.names = FALSE)
+write.csv(observed_lm_all, "../Output_files/Alpha_diversity/observed_lm_all.csv", row.names = FALSE)
 
 # The BH method ranks the p-values from smallest to largest, and then calculates adjusted p-values based on their rank and the total number of tests. If multiple p-values are close to each other (e.g., have similar magnitudes), they may receive similar ranks and therefore similar or identical adjusted p-values.
 ```
-# Multivariable models
+## Multivariable models
 ```{r}
 # Using a multivariable model for the distance weighted animals (to correct for different livestock species)
 # 1000m buffer animals 
-shannon_multivar_1000m <- lm(alpha_vars$shannon ~
-                                alpha_vars$copdcaco + 
-                                alpha_vars$npigsWghtDist.1000m.sum+ 
-                                alpha_vars$npoultryWghtDist.1000m.sum + 
-                                alpha_vars$ncowsWghtDist.1000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.1000m.sum+
-                                alpha_vars$ngoatsWghtDist.1000m.sum+
-                                alpha_vars$nsheepWghtDist.1000m.sum)
+shannon_multivar_1000m <- lm(metadata$shannon ~
+                                metadata$copdcaco + 
+                                metadata$npigsWghtDist.1000m.sum+ 
+                                metadata$npoultryWghtDist.1000m.sum + 
+                                metadata$ncowsWghtDist.1000m.sum+ 
+                                metadata$nhorsesWghtDist.1000m.sum+
+                                metadata$ngoatsWghtDist.1000m.sum+
+                                metadata$nsheepWghtDist.1000m.sum)
                              
-simpson_multivar_1000m <- lm(alpha_vars$SimpsonEvenness ~ 
-                                alpha_vars$copdcaco + 
-                                alpha_vars$npigsWghtDist.1000m.sum+ 
-                                alpha_vars$npoultryWghtDist.1000m.sum + 
-                                alpha_vars$ncowsWghtDist.1000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.1000m.sum+
-                                alpha_vars$ngoatsWghtDist.1000m.sum+
-                                alpha_vars$nsheepWghtDist.1000m.sum)
+simpson_multivar_1000m <- lm(metadata$SimpsonEvenness ~ 
+                                metadata$copdcaco + 
+                                metadata$npigsWghtDist.1000m.sum+ 
+                                metadata$npoultryWghtDist.1000m.sum + 
+                                metadata$ncowsWghtDist.1000m.sum+ 
+                                metadata$nhorsesWghtDist.1000m.sum+
+                                metadata$ngoatsWghtDist.1000m.sum+
+                                metadata$nsheepWghtDist.1000m.sum)
 
-observed_multivar_1000m <- lm(alpha_vars$Observed ~ 
-                                alpha_vars$copdcaco +
-                                  alpha_vars$npigsWghtDist.1000m.sum+ 
-                                alpha_vars$npoultryWghtDist.1000m.sum + 
-                                alpha_vars$ncowsWghtDist.1000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.1000m.sum+
-                                alpha_vars$ngoatsWghtDist.1000m.sum+
-                                alpha_vars$nsheepWghtDist.1000m.sum)
+observed_multivar_1000m <- lm(metadata$Observed ~ 
+                                metadata$copdcaco +
+                                  metadata$npigsWghtDist.1000m.sum+ 
+                                metadata$npoultryWghtDist.1000m.sum + 
+                                metadata$ncowsWghtDist.1000m.sum+ 
+                                metadata$nhorsesWghtDist.1000m.sum+
+                                metadata$ngoatsWghtDist.1000m.sum+
+                                metadata$nsheepWghtDist.1000m.sum)
 
 # 3000m buffer animals 
-shannon_multivar_3000m <- lm(alpha_vars$shannon ~
-                                alpha_vars$copdcaco + 
-                                alpha_vars$npigsWghtDist.3000m.sum+ 
-                                alpha_vars$npoultryWghtDist.3000m.sum + 
-                                alpha_vars$ncowsWghtDist.3000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.3000m.sum+
-                                alpha_vars$ngoatsWghtDist.3000m.sum+
-                                alpha_vars$nsheepWghtDist.3000m.sum)
+shannon_multivar_3000m <- lm(metadata$shannon ~
+                                metadata$copdcaco + 
+                                metadata$npigsWghtDist.3000m.sum+ 
+                                metadata$npoultryWghtDist.3000m.sum + 
+                                metadata$ncowsWghtDist.3000m.sum+ 
+                                metadata$nhorsesWghtDist.3000m.sum+
+                                metadata$ngoatsWghtDist.3000m.sum+
+                                metadata$nsheepWghtDist.3000m.sum)
 
-simpson_multivar_3000m <- lm(alpha_vars$SimpsonEvenness ~ 
-                                alpha_vars$copdcaco + 
-                                alpha_vars$npigsWghtDist.3000m.sum+ 
-                                alpha_vars$npoultryWghtDist.3000m.sum + 
-                                alpha_vars$ncowsWghtDist.3000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.3000m.sum+
-                                alpha_vars$ngoatsWghtDist.3000m.sum+
-                                alpha_vars$nsheepWghtDist.3000m.sum)
+simpson_multivar_3000m <- lm(metadata$SimpsonEvenness ~ 
+                                metadata$copdcaco + 
+                                metadata$npigsWghtDist.3000m.sum+ 
+                                metadata$npoultryWghtDist.3000m.sum + 
+                                metadata$ncowsWghtDist.3000m.sum+ 
+                                metadata$nhorsesWghtDist.3000m.sum+
+                                metadata$ngoatsWghtDist.3000m.sum+
+                                metadata$nsheepWghtDist.3000m.sum)
 
-observed_multivar_3000m <- lm(alpha_vars$Observed ~ 
-                               alpha_vars$copdcaco+ 
-                                 alpha_vars$npigsWghtDist.3000m.sum+ 
-                                alpha_vars$npoultryWghtDist.3000m.sum + 
-                                alpha_vars$ncowsWghtDist.3000m.sum+ 
-                                alpha_vars$nhorsesWghtDist.3000m.sum+
-                                alpha_vars$ngoatsWghtDist.3000m.sum+
-                                alpha_vars$nsheepWghtDist.3000m.sum)
+observed_multivar_3000m <- lm(metadata$Observed ~ 
+                               metadata$copdcaco+ 
+                                 metadata$npigsWghtDist.3000m.sum+ 
+                                metadata$npoultryWghtDist.3000m.sum + 
+                                metadata$ncowsWghtDist.3000m.sum+ 
+                                metadata$nhorsesWghtDist.3000m.sum+
+                                metadata$ngoatsWghtDist.3000m.sum+
+                                metadata$nsheepWghtDist.3000m.sum)
                              
 
 # Summary of the multiple linear regression models 
@@ -415,7 +422,7 @@ rownames(simpson_multivar_3000m_coeffs) <- new_row_names
 rownames(observed_multivar_3000m_coeffs) <- new_row_names
 
 # Save the summary data to a CSV file
-write.csv(shannon_multivar_3000m_coeffs, "..//Output_files//Alpha_diversity//shannon_multivar_3000m_coeffs.csv")
-write.csv(simpson_multivar_3000m_coeffs, "..//Output_files//Alpha_diversity//simpson_multivar_3000m_coeffs.csv")
-write.csv(observed_multivar_3000m_coeffs, "..//Output_files//Alpha_diversity//observed_multivar_3000m_coeffs.csv")
+write.csv(shannon_multivar_3000m_coeffs, "../Output_files/Alpha_diversity/shannon_multivar_3000m_coeffs.csv")
+write.csv(simpson_multivar_3000m_coeffs, "../Output_files/Alpha_diversity/simpson_multivar_3000m_coeffs.csv")
+write.csv(observed_multivar_3000m_coeffs, "../Output_files/Alpha_diversity/observed_multivar_3000m_coeffs.csv")
 ```
