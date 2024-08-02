@@ -1,10 +1,13 @@
 ---
 title: "1 - Load data and create phyloseq"
-author: "b.cornuhewitt@uu.nl"
+author: "Beatrice Cornu Hewitt"
+date: "`r Sys.time()`"
+output: html_document
 ---
+
 # Packages
 ```{r}
-library(phyloseq);library(tidyr);library(dplyr);library(openxlsx); library(textshape)
+library(phyloseq);library(tidyr);library(dplyr);library(openxlsx); library(textshape); library(plyr)
 ```
 # Parameters and folders 
 ```{r}
@@ -14,9 +17,9 @@ set.seed(seed)
 
 # input for ps object 
 here::here()
-metafile <- here::here("Data//Raw//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab")
-argclusterfile <- here::here("Data//Raw//ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab")
-argmappingfile <- here::here("Data//Raw//02e_TotalResfinderMapped_v3.tab")
+metafile <- here::here("Data/Raw/VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab")
+argclusterfile <- here::here("Data/Raw/ResfinderClustersFinal_Resfinder20200127_inclGeneLen+pheno_20201206b.tab")
+argmappingfile <- here::here("Data/Raw/02e_TotalResfinderMapped_v3.tab")
 ```
 # Read in the raw data
 ```{r}
@@ -33,12 +36,12 @@ ARGcount <- ARG.long %>%
 # Additional metadata - Livestock exposure
 ```{r}
 # Read in the exposure data from MdR - exposure proxies
-livestock_exp1 <- read.csv("..//Data//Raw//VGOcopdcaco_resistome_Livestpred_all_forBea.csv", header=TRUE, row.names='respnr')
+livestock_exp1 <- read.csv("../Data/Raw/VGOcopdcaco_resistome_Livestpred_all_forBea.csv", header=TRUE, row.names='respnr')
 # Remove the column 'X' from the dataframe 
 livestock_exp1 <- subset(livestock_exp1, select = -X)
 
 # Read in other livestock exposure metadata from Myrna including dispersion modelled endotoxin and PM10 
-livestock_exp2 <- read.csv("..//Data//Raw//VGOcopdcaco_resistome_Livestpred_forBea_copdstatus.csv", header=TRUE, row.names='respnr')
+livestock_exp2 <- read.csv("../Data/Raw/VGOcopdcaco_resistome_Livestpred_forBea_copdstatus.csv", header=TRUE, row.names='respnr')
 # Remove the column 'X' from the dataframe 
 livestock_exp2 <- subset(livestock_exp2, select = -X)
 livestock_exp2 <- subset(livestock_exp2, select = -copdcaco)
@@ -52,12 +55,13 @@ livestock_exp <- livestock_exp[, !duplicated(colnames(livestock_exp))]
 livestock_exp_df <- livestock_exp
 
 # Remove blanks from the dataframe
+blanks <- c("veldbl16", "veldbl3", "veldbl5")
 livestock_exp_df <- livestock_exp_df[!(livestock_exp_df$ID) %in% blanks, ]
 
 # Read in the exposure modelled concentrations
 # Import the LUR and RF estimates of E.coli, staph, tetW and mecA concentrations for each of the 69 participants
 # SLR LUR-modelled E.coli, staph, tetW and mecA concentrations
-livestock_models <- read.xlsx("..//Data//Raw//LUR_RF_residential_predictions_copdstatus.xlsx")
+livestock_models <- read.xlsx("../Data/Raw/LUR_RF_residential_predictions_copdstatus.xlsx")
 livestock_models <- data.frame(livestock_models, row.names = livestock_models$X1)
 livestock_models$X1 <- NULL
 
@@ -116,7 +120,7 @@ rownames(merged@tax_table) <- colnames(merged@otu_table)
 merged@sam_data$Enrich_pool_num <- as.factor(merged@sam_data$Enrich_pool_num)
 
 # Save ps object 
-saveRDS(merged, "..//Output_files//Phyloseq_objects//1_COPD_resistome_phyloseq_object.RDS")
+saveRDS(merged, "../Output_files/Phyloseq_objects/1_COPD_resistome_phyloseq_object.RDS")
 ```
 # Normalise PS for relative volume inputs  
 ```{r}
@@ -175,7 +179,7 @@ merged.rar3
 # tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
 
 # save this ps for later use for DA analysis
-saveRDS(merged.rar3, file="..//Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS")
+saveRDS(merged.rar3, file="../Output_files/Phyloseq_objects/2_COPD_resistome_phyloseq_object_rarefied.RDS")
 ```
 # Correct PS for ARG gene length
 ```{r}
@@ -187,7 +191,7 @@ ARGlen <- ARGlen %>% column_to_rownames("ARGname")
 ARGlen
 
 # ARGlen$ARGname <- rownames(ARGlen)
-write.xlsx(ARGlen, "..//Output_files//Phyloseq_objects//ARGlengths.xlsx")
+write.xlsx(ARGlen, "../Output_files/Phyloseq_objects/ARGlengths.xlsx")
 
 # ARG count to FPK
 merged.rar3.fpk <- merged.rar3
@@ -206,7 +210,7 @@ head(data.frame(otu_table(merged.rar3)))
 head(ARGlen) # Yes the correction is correct - scaled by a factor of 1000, then divided by their corresponding ARG length
 
 # Save partially normalised data 
-saveRDS(merged.rar3.fpk, "..//Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.rds")
+saveRDS(merged.rar3.fpk, "../Output_files/Phyloseq_objects/3_COPD_resistome_phyloseq_object_rarefied_FPK.rds")
 
 # Basic metrics of normalised/ARG length-corrected PS 
 summary(sample_data(merged.rar3.fpk))
@@ -219,7 +223,7 @@ rownames(qPCRcounts) <- NULL
 qPCRcounts <- qPCRcounts %>% column_to_rownames("SampleID")
 qPCRcounts
 
-saveRDS(qPCRcounts,"..//Output_files//Phyloseq_objects//qPCRcounts")
+saveRDS(qPCRcounts,"../Output_files/Phyloseq_objects/qPCRcounts")
 
 merged.rar3.fpkm <- merged.rar3.fpk
 
@@ -245,7 +249,7 @@ ps
 # tax_table()   Taxonomy Table:    [ 233 taxa by 11 taxonomic ranks ]
 
 # Save fully normalised & corrected data
-saveRDS(ps, "..//Output_files//Phyloseq_objects//4_COPD_resistome_phyloseq_object_rarefied_FPKM.RDS")
+saveRDS(ps, "../Output_files/Phyloseq_objects/4_COPD_resistome_phyloseq_object_rarefied_FPKM.RDS")
 
 # Remove blanks from ps  
 ps_noblanks <- ps
@@ -253,7 +257,7 @@ blanks <- c("veldbl16", "veldbl3", "veldbl5")
 ps_noblanks <- prune_samples(!sample_names(ps_noblanks)%in%blanks, ps_noblanks)
 ps; ps_noblanks # now 69 true samples, 3 blanks removed
 
-saveRDS(ps, "..//Output_files//Phyloseq_objects//4b_COPD_resistome_phyloseq_object_rarefied_FPKM_noblanks.RDS")
+saveRDS(ps, "../Output_files/Phyloseq_objects/4b_COPD_resistome_phyloseq_object_rarefied_FPKM_noblanks.RDS")
 
 
 # phyloseq-class experiment-level object
@@ -360,7 +364,7 @@ taxa_names(ps_aggl)
 tax_table(ps_aggl) # Yes this is the case
 
 # How many taxa before/after agglomeration?
-ntaxa(Final.ps); ntaxa(ps_aggl) # 85 ARGs now (ARGCluster 90 level) vs 233 ARGs 
+ntaxa(ps); ntaxa(ps_aggl) # 85 ARGs now (ARGCluster 90 level) vs 233 ARGs 
 ps_aggl@tax_table[,6] # inspect cluster names
 taxa_names(ps_aggl)
 
@@ -379,8 +383,8 @@ ps_aggl_noblanks;ps_aggl # blanks removed - 69 samples remaining
 # sample_data() Sample Data:       [ 72 samples by 237 sample variables ]
 # tax_table()   Taxonomy Table:    [ 85 taxa by 11 taxonomic ranks ]
 
-saveRDS(ps_aggl,"..//Output_files//Phyloseq_objects//5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
-saveRDS(ps_aggl_noblanks,"..//Output_files//Phyloseq_objects//6_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered_noblanks.RDS")
+saveRDS(ps_aggl,"../Output_files/Phyloseq_objects/5_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered.RDS")
+saveRDS(ps_aggl_noblanks,"../Output_files/Phyloseq_objects/6_COPD_resistome_phyloseq_object_rarefied_FPKM_90clustered_noblanks.RDS")
 ```
 # Summary of all phyloseq objects
 ```{r}
@@ -442,7 +446,7 @@ summary_statistics_df <- data.frame(
 
 # Display the summary statistics
 print(summary_statistics_df)
-write.xlsx(summary_statistics_df, "Output_files//LUR_RF_models//summary_statistics_df_residential_modelled_exp.xlsx")
+write.xlsx(summary_statistics_df, "Output_files/LUR_RF_models/summary_statistics_df_residential_modelled_exp.xlsx")
 
 # Check distribution of modelled concentrations
 hist(livestock_models$E.coli_LUR_estimates)
@@ -458,7 +462,7 @@ hist(livestock_models$mecA_RF_predictions)
 # Study population characteristics
 ```{r}
 # Microbiome ps from Warner contains metadata for the participants (this is the same for the resistome data as collected at the same period)
-microbiome.ps <- readRDS("..//Data//ps_COPD_d2_f_01%in2samples_08APR2021")
+microbiome.ps <- readRDS("../Data/ps_COPD_d2_f_01%in2samples_08APR2021")
 microbiome.ps
 # phyloseq-class experiment-level object
 # otu_table()   OTU Table:         [ 1092 taxa and 356 samples ]
@@ -468,7 +472,7 @@ microbiome.ps
 
 # This ps metadata is missing data for participant 19586
 # We need to extract this data from VGO2 data
-VGO2 <- read.csv("..//Data//Raw//Complete dataset 2014 VGO3 CP 20220618.csv")
+VGO2 <- read.csv("../Data/Raw/Complete dataset 2014 VGO3 CP 20220618.csv")
 # We also want to present livestock info for each participant - extract information on all farms within 3000m for each participant
 ps_aggl_noblanks@sam_data$AllFarm.3000m
 
@@ -658,11 +662,11 @@ zenodo_ps # Final PS object therefore now has 72 samples
 
 resistome_samdata<- zenodo_ps@sam_data
 resistome_samdata$ParticipantID <- rownames(resistome_samdata)
-write.xlsx(resistome_samdata, "Output_files//Phyloseq_objects//Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
+write.xlsx(resistome_samdata, "../Output_files/Phyloseq_objects/Sample_data_resistome_VGO_COPD.xlsx", rownames= TRUE)
 
 
 zenodo_ps@sam_data$copdcaco <- revalue(zenodo_ps@sam_data$copdcaco, c('1' ='COPD', '0' = 'control'))
 zenodo_ps@sam_data$copdcaco
 zenodo_ps
-saveRDS(zenodo_ps,"..//Output_files//Phyloseq_objects//Phyloseq_resistome_VGO_COPD.rds")
+saveRDS(zenodo_ps,"../Output_files/Phyloseq_objects/Phyloseq_resistome_VGO_COPD.rds")
 ```
