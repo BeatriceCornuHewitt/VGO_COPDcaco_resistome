@@ -4,7 +4,7 @@
 
 **Authors**: Beatrice Cornu Hewitt <a href="https://orcid.org/0000-0002-4594-4393" target="orcid.widget" rel="noopener noreferrer" style="vertical-align:top;"><img src="https://orcid.org/sites/default/files/images/orcid_16x16.png" style="width:1em;margin-right:.5em;" alt="ORCID iD icon"></a><br>
 **Contact**: b.cornuhewitt@uu.nl<br>
-**Date**: 31-01-2024<br>
+**Date**: "`r Sys.time()`"<br>
 
 ## Description
 The scripts in this repository are related to a COPD case-control study conducted with data from the VGO project which involves study participants living in a livestock dense region in the South Eastern Netherlands (https://www.rivm.nl/veehouderij-en-gezondheid/onderzoek-veehouderij-en-gezondheid-omwonenden-vgo). We aimed to investigate associations between the OP resistome composition and (1) COPD status, (2) the OP microbiome composition and (3) residential exposure to livestock-related microbial emissions.
