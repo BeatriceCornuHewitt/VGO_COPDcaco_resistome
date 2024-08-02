@@ -4,7 +4,7 @@ author: "b.cornuhewitt@uu.nl"
 ---
 # Packages
 ```{r}
-library(phyloseq); library(openxlsx); library(ggplot2); library(ggpubr); library(ggthemes); library(dplyr); library(scales); library(ggvenn); library(RColorBrewer); library(microbiome); library(parallel); library(vegan)
+library(phyloseq); library(openxlsx); library(ggplot2); library(ggpubr); library(ggthemes); library(dplyr); library(scales); library(ggvenn); library(RColorBrewer); library(microbiome); library(parallel); library(vegan); library(plyr)
 ```
 # Read in the ps objects
 ```{r}
@@ -64,9 +64,9 @@ df_control_ARGclusters <- as.data.frame(control_ARGCluster_names)
 df_blank_ARGclusters <- as.data.frame(blanks_ARGCluster_names)
 
 # Export data frames to Excel files
-write.xlsx(df_copd_ARGclusters, "Data//processed//Basic_resistome_explorations//df_copd_ARGclusters.xlsx", rowNames = FALSE)
-write.xlsx(df_control_ARGclusters, "Output_files//Basic_resistome_explorations//df_control_ARGclusters.xlsx", rowNames = FALSE)
-write.xlsx(df_blank_ARGclusters, "Output_files//Basic_resistome_explorations//df_blank_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_copd_ARGclusters, "../Output_files/Basic_resistome_explorations/df_copd_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_control_ARGclusters, "../Output_files/Basic_resistome_explorations/df_control_ARGclusters.xlsx", rowNames = FALSE)
+write.xlsx(df_blank_ARGclusters, "../Output_files/Basic_resistome_explorations/df_blank_ARGclusters.xlsx", rowNames = FALSE)
 ```
 # 16S qPCR DNA load across COPD, control and blank groups
 ```{r}
@@ -121,7 +121,7 @@ ggsave(filename = "../Output_files/Bacterial_load_comparison.png", plot = Bacter
 # Checking FPK values across COPD, control and blank groups
 ```{r}
 # FPK means not corrected for 16S qPCR values (Fragments Per Kilobase of transcript (FPK))
-PS_FPK <- readRDS("..//Output_files//Phyloseq_objects//3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS") # this is the PS object which is not corrected for 16S qPCR values
+PS_FPK <- readRDS("../Output_files/Phyloseq_objects/3_COPD_resistome_phyloseq_object_rarefied_FPK.RDS") # this is the PS object which is not corrected for 16S qPCR values
 
 # Remove duplicate sample (13674) from the dataset - there was an error in the choice and labelling of 1 control sample and we ended up with the same control sample being used for 2 case samples. It was mislabelled as '13674' hence was thought to be a different sample to '13764' which was already included in the dataset. Therefore we must remoce '13674' from the dataset. 
 PS_FPK <- prune_samples(sample_names(PS_FPK) != "13674", PS_FPK) 
@@ -212,7 +212,7 @@ calculate_total_FPKM <- function(physeq_data) {
 # Calculate total FPKM for COPD and control groups
 copd_total_FPKM <- calculate_total_FPKM(copd_data)
 control_total_FPKM <- calculate_total_FPKM(control_data)
-combined_total_FPKM <- calculate_total_FPKM(ps_aggl_noblanks.noblanks)
+combined_total_FPKM <- calculate_total_FPKM(ps_aggl_noblanks)
 
 summary(copd_total_FPKM)
 summary(control_total_FPKM)
@@ -311,7 +311,7 @@ ggplot(subset_data_0to100, aes(x = ARG, y = Total_FPKM)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 
 ## Round then transform the raw FPKM per ARG
-ARG_table_rounded <- as.data.frame(round(otu_table(ps_aggl_noblanks.noblanks)))
+ARG_table_rounded <- as.data.frame(round(otu_table(ps_aggl_noblanks)))
 ARG_table_rounded_transformed <-  ARG_table_rounded* 1e9
 total_fpkm_per_arg_rounded_transformed <- colSums(ARG_table_rounded_transformed)
 arg_fpkm_data_rounded_transformed <- data.frame(Total_FPKM_rounded_transformed = total_fpkm_per_arg_rounded_transformed)
@@ -325,7 +325,7 @@ mean(arg_fpkm_data_rounded_transformed$Total_FPKM)
 max(arg_fpkm_data_rounded_transformed$Total_FPKM)
 
 ## Transform then round the raw FPKM
-ARG_table_transformed <- as.data.frame(otu_table(ps_aggl_noblanks.noblanks)* 1e9)
+ARG_table_transformed <- as.data.frame(otu_table(ps_aggl_noblanks)* 1e9)
 ARG_table_transformed_rounded <- round(ARG_table_transformed)
 total_fpkm_per_arg_transformed_rounded <- colSums(ARG_table_transformed_rounded)
 arg_fpkm_data_transformed_rounded <- data.frame(Total_FPKM_transformed_rounded = total_fpkm_per_arg_transformed_rounded)
@@ -442,7 +442,7 @@ resistome_rare_curves <- ggrare(ps_round, step = 1000, color = "copdcaco", se = 
 rare_curves_color_copdcaco_split <- resistome_rare_curves + facet_wrap(~copdcaco)
 
 # Save the rarefaction curves
-ggsave("Output_files//Rarefaction_curves//Rarefaction_curves_colourperpopulation.png", plot = rare_curves_colorperpopulation, dpi = 300)
+ggsave("Output_files/Rarefaction_curves/Rarefaction_curves_colourperpopulation.png", plot = rare_curves_colorperpopulation, dpi = 300)
 rounded_FPKM
 ```
 # Top 10 most abundant ARG clusters
@@ -471,7 +471,7 @@ top10.ARGclusters.overall<- toptaxa (ps_aggl_noblanks, rank="ARGCluster", top=10
 top10.ARGclusters.overall
 
 # COPD and controls (no blanks)
-top10.ARGclusters.overall.noblanks<- toptaxa (ps_aggl_noblanks.noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
+top10.ARGclusters.overall.noblanks<- toptaxa (ps_aggl_noblanks, rank="ARGCluster", top=10, samples=NA, NArm=FALSE )
 top10.ARGclusters.overall.noblanks
 
 # Top 10 in copd samples 
@@ -533,7 +533,7 @@ ps.top10ARGClusters <- prune_taxa(top10.ARGclusters.overall.noblanks, ps_aggl_no
 ps.top10ARGClusters_noblanks <- subset_samples(ps.top10ARGClusters, copdcaco %in% c("1", "0"))
 
 # % of total taxa 
-total_sum <- sum(taxa_sums(ps_aggl_noblanks.noblanks))
+total_sum <- sum(taxa_sums(ps_aggl_noblanks))
 top10_sum <- sum(taxa_sums(ps.top10ARGClusters_noblanks))
 
 # Calculate the percentage
