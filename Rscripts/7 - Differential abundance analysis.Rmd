@@ -2,11 +2,17 @@
 title: "7 - Differential abundance analysis"
 author: "b.cornuhewitt@uu.nl"
 ---
+# Packages
+```{r}
+library(base); library(stats); library(graphics); library(dplyr); library(xlsx); library(ggplot2); library(phyloseq); library(DESeq2); library(ALDEx2)
+```
+
 # COPD vs control 
+
 ## Preparing data - unfiltered 
 ```{r}
 # Since the DA analyses require count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
-PS_rarefied <- readRDS("Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS") 
+PS_rarefied <- readRDS("../Output_files/Phyloseq_objects/2_COPD_resistome_phyloseq_object_rarefied.RDS") 
 # convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
 PS_rarefied_16Scorrected <- PS_rarefied
 PS_rarefied_16Scorrected@otu_table@.Data <- PS_rarefied_16Scorrected@otu_table@.Data / qPCRcounts[1:73, ]
@@ -31,13 +37,13 @@ taxa_names(Final_ps_DAanalysis)
 otu_table(Final_ps_DAanalysis)
 
 # Save normalised & 16S qPCR-corrected PS object ready for DA analysis input
-saveRDS(Final_ps_DAanalysis, "Output_files//Phyloseq_objects//7_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected.RDS")
+saveRDS(Final_ps_DAanalysis, "../Output_files/Phyloseq_objects/7_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected.RDS")
 
 # Rename ARGs to their cluster name
 Final_ps_DAanalysis_clusternames <- Final_ps_DAanalysis
 colnames(Final_ps_DAanalysis_clusternames@otu_table) <- c("aac(3)-II_clust","aac(3)-Iva","aac(6')-aph(2'')_clust","aadA_ant(3'')-Ia_clust","aadA_clust1","aadD","ant(6)-Ia_clust2","aph(3'')-Ib","aph(3')-Ia_aph(3')-Ic","aph(3')-Ib","aph(3')-III","aph(4)-Ia","aph(6)-Id","str","blaACT_clust","blaACT_CMG_MIR_clust","blaBRO","blaCARB_clust2","blaCTX-M_clust1","blaOXA-22","blaOXA-395_clust","blaOXA-60_clust","blaOXA-85","blaOXA_clust19","blaOXA_clust3","blaOXA_clust8","blaOXA_clust9","blaOXY_clust1","blaSPU-1","blaTEM_clust","blaZ_clust","cfxA_clust","mecA_clust","mecA1","penA","fusB","lsa(A)","lsa(C)","erm(A)_2_AF002716","erm(B)_clust","erm(C)_clust","erm(F)_clust","erm(T)_4_AJ488494","erm(X)_clust","lnu(C)","mdf(A)","mef(A)-3","mef(A)_clust","mph(A)","mph(C)","msr(A)","msr(D)","msr(E)","vga(A)_clust","cat(pC194)","cat_2","catA1","catQ","catS","cml_clust","cmx","cfr(C)","sul1","sul2","tet(32)","tet(33)","tet(37)","tet(39)","tet(40)","tet(44)","tet(A)","tet(B)","tet(C)","tet(G)","tet(K)","tet(L)_clust1","tet(M)","tet(O)","tet(O/32/O)","tet(O/W/32/O/W/O)","tet(O/W/O)-1","tet(Q)","tet(T)","tet(W)","dfrA15_clust")
 
-saveRDS(Final_ps_DAanalysis_clusternames, "Output_files//Phyloseq_objects//8_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected_clusternames.RDS")
+saveRDS(Final_ps_DAanalysis_clusternames, "../Output_files/Phyloseq_objects/8_COPD_resistome_phyloseq_object_rarefied_16SqPCRcorrected_clusternames.RDS")
 
 # Remove blanks from PS object 
 blanks <- subset_samples(Final_ps_DAanalysis_clusternames@sam_data, copdcaco == "blanc")
@@ -138,7 +144,7 @@ deseq2_copd_filt <- DESeq(deseq2_copd_filt, parallel = FALSE)
 deseq2_copd_results_filt <- results(deseq2_copd_filt)
 deseq2_copd_results_filt
 deseq2_copd_results_filt_df <- as.data.frame(deseq2_copd_results_filt)
-write.xlsx(deseq2_copd_results_filt_df, "Output_files//Differential_abundance//DESeq_results_table.xlsx", row.names = TRUE)
+write.xlsx(deseq2_copd_results_filt_df, "../Output_files/Differential_abundance/DESeq_results_table.xlsx", row.names = TRUE)
 
 #summary of differential gene expression
 summary(deseq2_copd_results_filt)
@@ -178,7 +184,7 @@ DESeq2_barplot <- ggplot(data_DESEq2, aes(y = ARGCluster, x = LogFoldChange, fil
 
 # Show the plot
 print(DESeq2_barplot)
-ggsave("Output_files//Differential_abundance//horizontal_DESeq2_bar_plot.png", plot = DESeq2_barplot, width = 8, height = 10, units = "in", dpi = 1000)
+ggsave("../Output_files/Differential_abundance/horizontal_DESeq2_bar_plot.png", plot = DESeq2_barplot, width = 8, height = 10, units = "in", dpi = 1000)
 
 
 # create plot 
@@ -230,7 +236,7 @@ sampledata_numeric <- as.numeric(as.character(sampledata.for.ALDEx2))
 ALDEx2.filtered.COPDcontrol <- ALDEx2::aldex(reads=otutab.for.ALDEx2.filtered, conditions= sampledata_numeric, test="t", effect = TRUE, denom="iqlr") # Aldex parameters set: test = "t" runs Welch's t-test and Wilcoxon tests. Effect = TRUE - tells aldex to calculate effect sizes. Denom="iqlr" is commonly used and indicates which features to retain as the denominator for the geometric mean calculation - "iqlr" accounts for data with systematic variation. 
 
 ALDEx2.filtered.COPDcontrol
-write.xlsx(ALDEx2.filtered.COPDcontrol, "Output_files//Differential_abundance//ALDEx2.COPDcontrol.results.table.xlsx", row.names = TRUE)
+write.xlsx(ALDEx2.filtered.COPDcontrol, "../Output_files/Differential_abundance/ALDEx2.COPDcontrol.results.table.xlsx", row.names = TRUE)
 
 
 # Create MA and Effect plots of ALDEx2 output
@@ -268,7 +274,7 @@ ALDEx2.filtered.COPDcontrol.effect <- aldex.effect(ALDEx2.filtered.COPDcontrol.c
 ## Preparing data - unfiltered 
 ```{r}
 # Since the DA analyses require count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
-PS_rarefied <- readRDS("Output_files//Phyloseq_objects//2_COPD_resistome_phyloseq_object_rarefied.RDS") 
+PS_rarefied <- readRDS("../Output_files/Phyloseq_objects/2_COPD_resistome_phyloseq_object_rarefied.RDS") 
 # convert otu fpk values directly by matrix manipulation in the ps object using qPCRcounts data frame 
 PS_rarefied_16Scorrected <- PS_rarefied
 PS_rarefied_16Scorrected@otu_table@.Data <- PS_rarefied_16Scorrected@otu_table@.Data / qPCRcounts[1:73, ]
@@ -464,9 +470,9 @@ count(aldex2.filtered.ngoatsWghtDist.3000m.sum$pearson.eBH < 0.1) # No ARG clust
 ```{r}
 # Since the DESeq2 function requires count data which has not been corrected for gene length, I need to create a new ps object with only corrections for volume input and qPCR bacterial count
 # This ps object is just corrected for volume inputs
-merged.rar3 <- readRDS("Input_files//merged.rar3.rds")
-metafile  <- "Input_files//VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab"
-argmappingfile  <- "Input_files//02e_TotalResfinderMapped_v3.tab"
+merged.rar3 <- readRDS("../Input_files/merged.rar3.rds")
+metafile  <- "../Input_files/VGOCOPD_metadata_completed_20210429alx_correctFormulaColumnTU.xlsx.tab"
+argmappingfile  <- "../Input_files/02e_TotalResfinderMapped_v3.tab"
 
 metadata <- read.csv( metafile, header=TRUE, sep="\t", row.names=1 )
 metadata
@@ -621,7 +627,7 @@ ps.for.DA.aggl.noblanks.expmodels.filtered@otu_table # 30 taxa (agglomerated and
 ps.for.DA.aggl.noblanks.expmodels.filtered@sam_data # 69 sammples (no blanks - 35 copd cases and 34 controls)
 ps.for.DA.aggl.noblanks.expmodels.filtered@tax_table # Contains information on 30 taxa
 # Save this ps object
-saveRDS(ps.for.DA.aggl.noblanks.expmodels.filtered, "Output_files//ps.for.DA.aggl.noblanks.expmodels.filtered.rds")
+saveRDS(ps.for.DA.aggl.noblanks.expmodels.filtered, "../Output_files/ps.for.DA.aggl.noblanks.expmodels.filtered.rds")
 taxa_names(ps.for.DA.aggl.noblanks.expmodels.filtered)
 ```
 ## DESeq2
@@ -700,14 +706,14 @@ deseq2.mecARF.results
 sum(deseq2.mecARF.results$padj < 0.1, na.rm=TRUE) # 0 ARG clusters have p-value <0.1
 
 # Save results tables as excel files 
-write.csv(deseq2.ecoliLUR.results, "Output_files//DESeq_results//deseq2.ecoliLUR.results.csv")
-write.csv(deseq2.staphLUR.results, "Output_files//DESeq_results//deseq2.staphLUR.results.csv")
-write.csv(deseq2.tetWLUR.results, "Output_files//DESeq_results//deseq2.tetWLUR.results.csv")
-write.csv(deseq2.mecALUR.results, "Output_files//DESeq_results//deseq2.mecALUR.results.csv")
-write.csv(deseq2.ecoliRF.results, "Output_files//DESeq_results//deseq2.ecoliRF.results.csv")
-write.csv(deseq2.staphRF.results, "Output_files//DESeq_results//deseq2.staphRF.results.csv")
-write.csv(deseq2.tetWRF.results, "Output_files//DESeq_results//deseq2.tetWRF.results.csv")
-write.csv(deseq2.mecARF.results, "Output_files//DESeq_results//deseq2.mecARF.results.csv")
+write.csv(deseq2.ecoliLUR.results, "../Output_files/DESeq_results/deseq2.ecoliLUR.results.csv")
+write.csv(deseq2.staphLUR.results, "../Output_files/DESeq_results/deseq2.staphLUR.results.csv")
+write.csv(deseq2.tetWLUR.results, "../Output_files/DESeq_results/deseq2.tetWLUR.results.csv")
+write.csv(deseq2.mecALUR.results, "../Output_files/DESeq_results/deseq2.mecALUR.results.csv")
+write.csv(deseq2.ecoliRF.results, "../Output_files/DESeq_results/deseq2.ecoliRF.results.csv")
+write.csv(deseq2.staphRF.results, "../Output_files/DESeq_results/deseq2.staphRF.results.csv")
+write.csv(deseq2.tetWRF.results, "../Output_files/DESeq_results/deseq2.tetWRF.results.csv")
+write.csv(deseq2.mecARF.results, "../Output_files/DESeq_results/deseq2.mecARF.results.csv")
 
 # Visualising results from DA analysis
 # Create the volcano plot with log-scaled y-axis
