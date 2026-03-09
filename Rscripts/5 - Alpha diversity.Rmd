@@ -125,6 +125,26 @@ wilcox_simpson # p-value = 0.3671
 wilcox_observed <- wilcox.test(metadata$Observed~metadata$copdcaco)
 wilcox_observed # p-value = 0.1708
 ```
+
+## Check mean 
+```{r}
+# Control population
+mean(metadata$shannon[metadata$copdcaco == "Control"]) # 2.072952
+sd(metadata$shannon[metadata$copdcaco == "Control"]) # 0.4631099
+summary(metadata$shannon[metadata$copdcaco == "Control"])
+ #   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+ # 0.9925  1.8385  2.1330  2.0730  2.3394  3.1011
+
+
+# COPD
+mean(metadata$shannon[metadata$copdcaco == "COPD"]) # 2.334597
+sd(metadata$shannon[metadata$copdcaco == "COPD"]) # 0.4370172
+summary(metadata$shannon[metadata$copdcaco == "COPD"])
+# Min.      1st Qu.  Median   Mean 3rd Qu.    Max. 
+#   1.434   2.136   2.317   2.335   2.516   3.330 
+
+```
+
 ## Boxplots
 ```{r}
 theme_set(theme_cowplot())
