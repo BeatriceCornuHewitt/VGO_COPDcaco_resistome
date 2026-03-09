@@ -2,7 +2,6 @@
 title: "1 - Load data and create phyloseq"
 author: "Beatrice Cornu Hewitt"
 date: "`r Sys.time()`"
-output: html_document
 ---
 
 # Packages
@@ -32,7 +31,6 @@ ARG.long <- read.csv(argmappingfile, header=TRUE, sep="\t")
 ARGcount <- ARG.long %>%
     select(SampleName, ARGname, MappedCount) %>% 
     pivot_wider(names_from=ARGname, values_from=MappedCount, values_fill=0)
-
 
 ```
 # Additional metadata - Livestock exposure
@@ -575,7 +573,7 @@ merged_exp$copdcaco <-
 merged_exp <- merged_exp %>%
   mutate(gender = recode(gender, `0` = "Male", `1` = "Female"))%>%
   mutate(farmchild = recode(farmchild, `0` = "No", `1` = "Yes"))%>%
-  mutate(educationlevel= recode(farmchild, `0` = "Low", `1` = "Medium", `2` = "High"))%>%
+  mutate(educationlevel= recode(educationlevel, `0` = "Low", `1` = "Medium", `2` = "High"))%>%
   mutate(smokeever= recode(smokeever, `0` = "Never", `1` = "Former smoker"))
 
 # Set labels for table 
